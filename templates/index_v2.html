@@ -241,7 +241,6 @@ async function loadDB(){
     }
   }catch(e){ console.error('Load failed', e); }
   DB = emptyDB();
-  seedDemoData();
   await saveDB();
 }
 async function saveDB(){
