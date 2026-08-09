@@ -1,0 +1,1643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KKI Stores — Digital Store Management System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#F3F4F1;
+    --surface:#FFFFFF;
+    --ink:#191D23;
+    --ink-soft:#5B6472;
+    --ink-faint:#8B93A1;
+    --sidebar:#12151B;
+    --sidebar-ink:#B9C2CF;
+    --sidebar-ink-dim:#6E7787;
+    --accent:#C98A1D;
+    --accent-strong:#A66E13;
+    --accent-tint:#FBF0DC;
+    --line:#E3E4E0;
+    --line-soft:#EDEEEB;
+    --good:#2F8F5B; --good-tint:#E7F5EE;
+    --warn:#C98A1D; --warn-tint:#FBF0DC;
+    --danger:#C0392B; --danger-tint:#FBEAE8;
+    --info:#2F6FA8; --info-tint:#E9F1F8;
+    --grey:#5B6472; --grey-tint:#EEEFEC;
+    --radius:8px;
+    --shadow:0 1px 2px rgba(20,20,20,.05), 0 4px 14px rgba(20,20,20,.04);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--ink);
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif; font-size:14px;}
+  h1,h2,h3,h4{font-family:'IBM Plex Sans',sans-serif; margin:0; letter-spacing:-.01em;}
+  code,.mono,.ident{font-family:'IBM Plex Mono',monospace;}
+  button{font-family:inherit;}
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-thumb{background:#D5D6D1;border-radius:4px;}
+
+  #app{display:flex; height:100vh; overflow:hidden;}
+
+  /* SIDEBAR */
+  #sidebar{width:238px; flex:0 0 238px; background:var(--sidebar); color:var(--sidebar-ink);
+    display:flex; flex-direction:column; overflow-y:auto;}
+  .brand{padding:20px 18px 14px; border-bottom:1px solid #232833;}
+  .brand .name{font-family:'IBM Plex Sans'; font-weight:700; font-size:15px; color:#fff; letter-spacing:.02em;}
+  .brand .sub{font-family:'IBM Plex Mono'; font-size:10.5px; color:var(--accent); margin-top:3px; letter-spacing:.08em;}
+  .brand .doc{font-size:10px; color:var(--sidebar-ink-dim); margin-top:6px;}
+  nav{padding:10px 8px; flex:1;}
+  .nav-group{margin-bottom:4px;}
+  .nav-title{font-size:10px; text-transform:uppercase; letter-spacing:.09em; color:var(--sidebar-ink-dim);
+    padding:12px 10px 4px;}
+  .nav-item{display:flex; align-items:center; gap:9px; padding:8px 10px; border-radius:6px; cursor:pointer;
+    color:var(--sidebar-ink); font-size:13px; font-weight:500; margin-bottom:1px; transition:background .12s;}
+  .nav-item:hover{background:#1D222B;}
+  .nav-item.active{background:var(--accent); color:#1A1300;}
+  .nav-item .ic{width:16px; text-align:center; font-size:13px; opacity:.9;}
+  .nav-badge{margin-left:auto; background:var(--danger); color:#fff; font-size:10px; font-weight:700;
+    padding:1px 6px; border-radius:10px; min-width:16px; text-align:center;}
+  .nav-item.active .nav-badge{background:#1A1300; color:var(--accent);}
+  .sidebar-foot{padding:12px 16px; border-top:1px solid #232833; font-size:10.5px; color:var(--sidebar-ink-dim);}
+
+  /* MAIN */
+  #main{flex:1; overflow-y:auto; padding:26px 32px 60px;}
+  .topbar{display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;}
+  .topbar h1{font-size:20px; font-weight:700;}
+  .topbar .desc{color:var(--ink-soft); font-size:12.5px; margin-top:3px;}
+  .btn{display:inline-flex; align-items:center; gap:6px; background:var(--ink); color:#fff; border:none;
+    padding:8px 14px; border-radius:7px; font-size:13px; font-weight:600; cursor:pointer; transition:opacity .1s;}
+  .btn:hover{opacity:.85;}
+  .btn.primary{background:var(--accent); color:#241900;}
+  .btn.ghost{background:transparent; color:var(--ink); border:1px solid var(--line); font-weight:500;}
+  .btn.ghost:hover{background:var(--grey-tint); opacity:1;}
+  .btn.sm{padding:5px 10px; font-size:12px; border-radius:6px;}
+  .btn.danger{background:var(--danger); color:#fff;}
+  .btn:disabled{opacity:.4; cursor:not-allowed;}
+
+  /* CARDS / GRID */
+  .grid{display:grid; gap:14px;}
+  .cards4{grid-template-columns:repeat(4,1fr);}
+  .cards3{grid-template-columns:repeat(3,1fr);}
+  .cards2{grid-template-columns:repeat(2,1fr);}
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:16px 18px; box-shadow:var(--shadow);}
+  .stat{display:flex; flex-direction:column; gap:6px;}
+  .stat .label{font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-faint); font-weight:600;}
+  .stat .value{font-size:28px; font-weight:700; font-family:'IBM Plex Sans'; line-height:1;}
+  .stat .value.good{color:var(--good);} .stat .value.warn{color:var(--warn);} .stat .value.danger{color:var(--danger);}
+  .panel{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:18px;}
+  .panel-head{display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid var(--line-soft);}
+  .panel-head h3{font-size:14px; font-weight:700;}
+  .panel-body{padding:14px 18px;}
+
+  /* TABLE */
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  thead th{text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-faint);
+    font-weight:700; padding:8px 10px; border-bottom:1px solid var(--line); white-space:nowrap;}
+  tbody td{padding:9px 10px; border-bottom:1px solid var(--line-soft); vertical-align:middle;}
+  tbody tr:hover{background:#FAFAF8;}
+  tbody tr:last-child td{border-bottom:none;}
+  .num{text-align:right; font-variant-numeric:tabular-nums;}
+  .empty-row td{text-align:center; color:var(--ink-faint); padding:26px; font-style:italic;}
+
+  /* TAGS / BADGES */
+  .tag{display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:20px; font-size:11px; font-weight:700;}
+  .tag.green{background:var(--good-tint); color:var(--good);}
+  .tag.yellow{background:var(--warn-tint); color:var(--warn);}
+  .tag.red{background:var(--danger-tint); color:var(--danger);}
+  .tag.blue{background:var(--info-tint); color:var(--info);}
+  .tag.white{background:var(--grey-tint); color:var(--grey); border:1px solid var(--line);}
+  .dot{width:7px; height:7px; border-radius:50%; display:inline-block;}
+  .dot.green{background:var(--good);} .dot.yellow{background:var(--warn);} .dot.red{background:var(--danger);}
+  .dot.blue{background:var(--info);} .dot.white{background:#B9BEB5;}
+
+  .ident-badge{font-family:'IBM Plex Mono'; font-weight:700; font-size:12px; background:#12151B; color:#F2CE8C;
+    padding:3px 8px; border-radius:5px; letter-spacing:.02em; display:inline-block;}
+
+  .pill{font-size:11px; font-weight:600; padding:2px 9px; border-radius:20px; background:var(--grey-tint); color:var(--ink-soft);}
+  .pill.pending{background:var(--warn-tint); color:var(--warn);}
+  .pill.approved{background:var(--info-tint); color:var(--info);}
+  .pill.issued, .pill.completed, .pill.done{background:var(--good-tint); color:var(--good);}
+  .pill.rejected{background:var(--danger-tint); color:var(--danger);}
+
+  /* FORMS / MODAL */
+  .overlay{position:fixed; inset:0; background:rgba(15,17,20,.5); display:flex; align-items:flex-start;
+    justify-content:center; padding:40px 20px; overflow-y:auto; z-index:100;}
+  .modal{background:#fff; border-radius:12px; width:100%; max-width:640px; box-shadow:0 20px 60px rgba(0,0,0,.3);}
+  .modal-head{display:flex; align-items:center; justify-content:space-between; padding:16px 22px; border-bottom:1px solid var(--line);}
+  .modal-head h3{font-size:15px; font-weight:700;}
+  .modal-close{cursor:pointer; color:var(--ink-faint); font-size:20px; border:none; background:none; line-height:1;}
+  .modal-body{padding:20px 22px; max-height:70vh; overflow-y:auto;}
+  .modal-foot{display:flex; justify-content:flex-end; gap:8px; padding:14px 22px; border-top:1px solid var(--line);}
+  .field{margin-bottom:13px;}
+  .field label{display:block; font-size:12px; font-weight:600; color:var(--ink-soft); margin-bottom:5px;}
+  .field .hint{font-size:11px; color:var(--ink-faint); margin-top:4px;}
+  .field input, .field select, .field textarea{width:100%; padding:8px 10px; border:1px solid var(--line);
+    border-radius:6px; font-size:13px; font-family:inherit; background:#fff; color:var(--ink);}
+  .field input:focus, .field select:focus, .field textarea:focus{outline:none; border-color:var(--accent);}
+  .field-row{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  .field-row3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;}
+  .radio-group{display:flex; gap:14px; flex-wrap:wrap;}
+  .radio-group label{display:flex; align-items:center; gap:6px; font-size:13px; font-weight:500; color:var(--ink);}
+  .item-rows{border:1px solid var(--line); border-radius:8px; overflow:hidden; margin-bottom:8px;}
+  .item-rows .irow{display:grid; grid-template-columns:2fr 1fr 1fr 32px; gap:8px; padding:8px; border-bottom:1px solid var(--line-soft); align-items:center;}
+  .item-rows .irow:last-child{border-bottom:none;}
+  .irow input, .irow select{padding:6px 8px; font-size:12.5px;}
+  .rm-row{background:none; border:none; color:var(--danger); cursor:pointer; font-size:15px;}
+
+  .search-bar{display:flex; gap:8px; margin-bottom:14px;}
+  .search-bar input{flex:1; padding:8px 12px; border:1px solid var(--line); border-radius:7px; font-size:13px;}
+  select.filter{padding:8px 10px; border:1px solid var(--line); border-radius:7px; font-size:13px; background:#fff;}
+
+  .alert-list{display:flex; flex-direction:column; gap:8px;}
+  .alert-item{display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:8px; font-size:13px; border:1px solid var(--line-soft);}
+  .alert-item.danger{background:var(--danger-tint); border-color:#F0CFC9;}
+  .alert-item.warn{background:var(--warn-tint); border-color:#F0DCB1;}
+  .alert-item .ic{font-size:15px;}
+  .alert-item b{font-weight:700;}
+  .muted{color:var(--ink-faint);}
+  .flow-chip{display:inline-flex; align-items:center; gap:6px; background:var(--grey-tint); border:1px solid var(--line);
+    padding:6px 12px; border-radius:20px; font-size:12px; font-weight:600;}
+  .flow-arrow{color:var(--ink-faint); font-size:14px;}
+  .flow-row{display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin:10px 0;}
+
+  .toast{position:fixed; bottom:22px; right:22px; background:var(--ink); color:#fff; padding:11px 18px;
+    border-radius:8px; font-size:13px; font-weight:600; box-shadow:0 8px 24px rgba(0,0,0,.25); z-index:200; opacity:0; transform:translateY(8px); transition:all .25s;}
+  .toast.show{opacity:1; transform:translateY(0);}
+
+  .kv{display:grid; grid-template-columns:auto 1fr; gap:6px 14px; font-size:13px;}
+  .kv .k{color:var(--ink-faint); font-weight:500;}
+  .kv .v{font-weight:600;}
+
+  .tab-strip{display:flex; gap:4px; margin-bottom:16px; border-bottom:1px solid var(--line); flex-wrap:wrap;}
+  .tab-btn{padding:9px 14px; font-size:12.5px; font-weight:600; color:var(--ink-soft); background:none; border:none;
+    cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px;}
+  .tab-btn.active{color:var(--accent-strong); border-bottom-color:var(--accent);}
+
+  .link-btn{background:none; border:none; color:var(--info); cursor:pointer; font-weight:600; font-size:12.5px; padding:0;}
+  .icon-btn{background:none; border:none; cursor:pointer; color:var(--ink-faint); font-size:14px; padding:3px 5px; border-radius:4px;}
+  .icon-btn:hover{background:var(--grey-tint); color:var(--ink);}
+
+  .print-only{display:none;}
+  @media print{
+    #sidebar,.topbar .btn,.no-print{display:none !important;}
+    #main{padding:0; overflow:visible;}
+    body{background:#fff;}
+    .print-only{display:block;}
+  }
+  .loading-screen{display:flex; align-items:center; justify-content:center; height:100vh; width:100vw; background:var(--bg); color:var(--ink-soft); font-family:'IBM Plex Mono';}
+  .empty-state{text-align:center; padding:50px 20px; color:var(--ink-faint);}
+  .empty-state .big{font-size:32px; margin-bottom:8px;}
+  .section-note{background:var(--info-tint); border:1px solid #C9E0F0; color:#265784; font-size:12px; padding:10px 14px; border-radius:8px; margin-bottom:14px;}
+</style>
+</head>
+<body>
+<div id="app"><div class="loading-screen">Loading KKI Stores…</div></div>
+<div id="toast" class="toast"></div>
+
+<script>
+/* =========================================================================
+   K K INDUSTRIES — DIGITAL STORE MANAGEMENT SYSTEM
+   Built on KKI-QMS-06 (Stores & Sales SOP, ISO 9001:2015)
+   Single-file app. Persists via window.storage (personal, per-browser-account).
+   ========================================================================= */
+
+const STORAGE_KEY = 'kki_store_db_v2';
+const MONTH_CODE = ['A','B','C','D','E','F','G','H','I','J','K','L']; // Jan..Dec per manual
+
+let DB = null;
+let ROUTE = 'dashboard';
+let ROUTE_SUB = null;
+let CURRENT_USER = null;
+
+/* ---------- Default / empty DB shape ---------- */
+function emptyDB(){
+  return {
+    materials: [], suppliers: [], customers: [], locations: [],
+    batches: [], transactions: [],
+    requisitions: [], issues: [], outwards: [], scraps: [], audits: [],
+    seq: { material:0, supplier:0, customer:0, batch:0, inward:0, grn:0, req:0, issue:0, outward:0, scrap:0, audit:0 },
+    identCounters: {},
+    tagDefs: [
+      {code:'green', label:'Green — Approved / Usable', desc:'Material inspected & accepted. Available for issue.'},
+      {code:'yellow', label:'Yellow — Under Inspection / Hold', desc:'Awaiting QC decision. Not available for issue.'},
+      {code:'red', label:'Red — Rejected / Blocked', desc:'Failed inspection or blocked. Cannot be issued or dispatched.'},
+      {code:'blue', label:'Blue — Supplier Material', desc:'Identifies material sourced from a supplier (per KKI coding system).'},
+      {code:'white', label:'White — Customer Material', desc:'Identifies material supplied by / belonging to a customer.'}
+    ],
+    settings:{ initialized:true, companyName:'K K INDUSTRIES', docRef:'KKI-QMS-06' }
+  };
+}
+
+/* ---------- Persistence (server-backed, shared across all logged-in users) ---------- */
+async function loadDB(){
+  try{
+    const res = await fetch('/api/state');
+    if(res.ok){
+      const json = await res.json();
+      if(json && json.data){ DB = JSON.parse(json.data); return; }
+    }
+  }catch(e){ console.error('Load failed', e); }
+  DB = emptyDB();
+  seedDemoData();
+  await saveDB();
+}
+async function saveDB(){
+  try{
+    const res = await fetch('/api/state', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({data: JSON.stringify(DB)})
+    });
+    if(!res.ok) throw new Error('save failed: '+res.status);
+  }catch(e){ console.error('Storage save failed', e); showToast('⚠ Could not save — check your connection'); }
+}
+
+/* ---------- Seed a bit of realistic demo data so the system is not empty on first run ---------- */
+function seedDemoData(){
+  const sup1 = addSupplierRaw('Shree Paper Mills', 'MIDC, Kolhapur, MH', '27ABCDE1234F1Z5', 'R. Deshmukh', '9822011223', 'sales@shreepaper.in');
+  const sup2 = addSupplierRaw('Vishal Chemicals & Adhesives', 'Kagal, Kolhapur, MH', '27PQRXY5678H1Z2', 'S. Patil', '9876543210', 'orders@vishalchem.in');
+  const cus1 = addCustomerRaw('ABC Industries Pvt Ltd', 'Shiroli MIDC, Kolhapur', 'Mr. A. Kulkarni', '9922334455');
+  addLocationRaw('Rack A', 'A-01'); addLocationRaw('Rack A', 'A-02'); addLocationRaw('Rack A', 'A-03');
+  addLocationRaw('Rack B', 'B-01'); addLocationRaw('Rack B', 'B-02');
+  addLocationRaw('Rack C', 'C-01');
+
+  const m1 = addMaterialRaw({name:'Duplex Board', category:'Raw Material', spec:'350 GSM', unit:'Sheets', supplierId:sup1.id, minStock:500, reorderLevel:800, maxStock:3000, shelfLifeDays:0, expiryApplicable:false, fifoApplicable:true, locationId: DB.locations[1].id});
+  const m2 = addMaterialRaw({name:'Adhesive (PVA)', category:'Consumable', spec:'Industrial Grade', unit:'KG', supplierId:sup2.id, minStock:60, reorderLevel:100, maxStock:400, shelfLifeDays:180, expiryApplicable:true, fifoApplicable:true, locationId: DB.locations[3].id});
+  const m3 = addMaterialRaw({name:'Printing Ink — Black', category:'Consumable', spec:'Offset', unit:'KG', supplierId:sup2.id, minStock:15, reorderLevel:25, maxStock:120, shelfLifeDays:365, expiryApplicable:true, fifoApplicable:true, locationId: DB.locations[4].id});
+
+  // demo inward -> batches
+  const b1 = doInward({materialId:m1.id, supplierId:sup1.id, sourceType:'S', poNo:'PO-2044', challanNo:'CH-7781', challanDate:'2026-08-01', qty:500, locationId:m1.locationId, inspectionStatus:'Accepted', remarks:'Received in good condition'}, false);
+  const b2 = doInward({materialId:m1.id, supplierId:sup1.id, sourceType:'S', poNo:'PO-2051', challanNo:'CH-7799', challanDate:'2026-08-05', qty:750, locationId:m1.locationId, inspectionStatus:'Accepted', remarks:''}, false);
+  const b3 = doInward({materialId:m2.id, supplierId:sup2.id, sourceType:'S', poNo:'PO-2019', challanNo:'CH-4410', challanDate:'2026-07-20', qty:120, locationId:m2.locationId, inspectionStatus:'Accepted', remarks:'', expiryDate:'2026-08-12'}, false);
+  const b4 = doInward({materialId:m3.id, supplierId:sup2.id, sourceType:'S', poNo:'PO-2020', challanNo:'CH-4433', challanDate:'2026-08-02', qty:20, locationId:m3.locationId, inspectionStatus:'Accepted', remarks:'', expiryDate:'2027-06-01'}, false);
+
+  DB.customers[0] = cus1;
+}
+
+/* ---------- Utility ---------- */
+function uid(prefix, n){ return prefix + '-' + String(n).padStart(6,'0'); }
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+function fmtDate(d){ if(!d) return '—'; const dt = new Date(d+'T00:00:00'); if(isNaN(dt)) return d;
+  return dt.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}); }
+function daysBetween(a,b){ const A=new Date(a+'T00:00:00'), B=new Date(b+'T00:00:00'); return Math.round((B-A)/86400000); }
+function escapeHtml(s){ if(s===undefined||s===null) return ''; return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(window.__toastTimer); window.__toastTimer=setTimeout(()=>t.classList.remove('show'), 2600); }
+
+function materialById(id){ return DB.materials.find(m=>m.id===id); }
+function supplierById(id){ return DB.suppliers.find(s=>s.id===id); }
+function customerById(id){ return DB.customers.find(c=>c.id===id); }
+function locationById(id){ return DB.locations.find(l=>l.id===id); }
+function batchById(id){ return DB.batches.find(b=>b.id===id); }
+
+/* ---------- Identification number generator (per KKI-QMS-06 coding system: X&&/##/$ ) ---------- */
+function nextIdentificationNo(dateStr, type){ // type: 'S' supplier or 'C' customer
+  const d = new Date(dateStr+'T00:00:00');
+  const monthLetter = MONTH_CODE[d.getMonth()];
+  const yy = String(d.getFullYear()).slice(-2);
+  const key = monthLetter+yy+type;
+  DB.identCounters[key] = (DB.identCounters[key]||0) + 1;
+  const serial = String(DB.identCounters[key]).padStart(2,'0');
+  return { identNo: `${monthLetter}${yy}/${serial}/${type}`, serial: DB.identCounters[key] };
+}
+
+/* ---------- Stock helpers ---------- */
+function currentStock(materialId){
+  return DB.batches.filter(b=>b.materialId===materialId && b.tag==='green')
+    .reduce((s,b)=>s+b.qtyRemaining,0);
+}
+function totalStockAllStatus(materialId){
+  return DB.batches.filter(b=>b.materialId===materialId).reduce((s,b)=>s+b.qtyRemaining,0);
+}
+function usableBatchesFIFO(materialId){
+  return DB.batches.filter(b=>b.materialId===materialId && b.tag==='green' && b.qtyRemaining>0)
+    .sort((a,b)=> new Date(a.receivedDate) - new Date(b.receivedDate));
+}
+function logTxn({date, materialId, batchId, type, ref, qtyIn=0, qtyOut=0, remarks=''}){
+  DB.transactions.push({
+    id: DB.transactions.length+1, date, materialId, batchId, type, ref,
+    qtyIn, qtyOut, balanceAfter: currentStock(materialId), remarks
+  });
+}
+
+/* ---------- Master data raw add helpers (used by seed + forms) ---------- */
+function addSupplierRaw(name,address,gst,contact,mobile,email){
+  DB.seq.supplier++; const s={id:'sup_'+DB.seq.supplier, code:uid('SUP',DB.seq.supplier), name,address,gst,contact,mobile,email,status:'Active'};
+  DB.suppliers.push(s); return s;
+}
+function addCustomerRaw(name,address,contact,mobile){
+  DB.seq.customer++; const c={id:'cus_'+DB.seq.customer, code:uid('CUS',DB.seq.customer), name,address,contact,mobile,status:'Active'};
+  DB.customers.push(c); return c;
+}
+function addLocationRaw(rack,bin){
+  const id='loc_'+(DB.locations.length+1);
+  const l={id, rack, bin, code:`${rack.split(' ').pop()}-${bin}`};
+  DB.locations.push(l); return l;
+}
+function addMaterialRaw(o){
+  DB.seq.material++;
+  const m={
+    id:'mat_'+DB.seq.material, code:uid('MAT',DB.seq.material),
+    name:o.name, category:o.category||'Raw Material', spec:o.spec||'', unit:o.unit||'PCS',
+    supplierId:o.supplierId||'', minStock:+o.minStock||0, reorderLevel:+o.reorderLevel||0, maxStock:+o.maxStock||0,
+    shelfLifeDays:+o.shelfLifeDays||0, expiryApplicable: !!o.expiryApplicable, fifoApplicable: o.fifoApplicable!==false,
+    locationId:o.locationId||'', status:'Active',
+    extrusionNo:o.extrusionNo||'', rmSpec:o.rmSpec||'', lengthMm:o.lengthMm||'', widthMm:o.widthMm||'',
+    cuttingLengthMm:o.cuttingLengthMm||'', rmWeightKg:o.rmWeightKg||'', totalCuttingLength:o.totalCuttingLength||'',
+    rmRequiredKg:o.rmRequiredKg||'', partNo:o.partNo||''
+  };
+  DB.materials.push(m); return m;
+}
+
+/* ---------- Core business operations ---------- */
+function doInward(o, showMsg=true){
+  const date = o.challanDate || todayISO();
+  const { identNo } = nextIdentificationNo(date, o.sourceType);
+  DB.seq.batch++; DB.seq.inward++; DB.seq.grn++;
+  const grnNo = uid('GRN', DB.seq.grn);
+  const expiryDate = o.expiryDate || (function(){
+    const mat = materialById(o.materialId);
+    if(mat && mat.expiryApplicable && mat.shelfLifeDays>0){
+      const d = new Date(date+'T00:00:00'); d.setDate(d.getDate()+mat.shelfLifeDays);
+      return d.toISOString().slice(0,10);
+    }
+    return '';
+  })();
+  const tag = o.inspectionStatus==='Accepted' ? 'green' : (o.inspectionStatus==='Rejected' ? 'red' : 'yellow');
+  const batch = {
+    id:'batch_'+DB.seq.batch, identNo, grnNo, inwardNo: uid('INW', DB.seq.inward),
+    materialId:o.materialId, sourceType:o.sourceType, supplierId:o.sourceType==='S'?o.supplierId:'', customerId:o.sourceType==='C'?o.customerId:'',
+    poNo:o.poNo||'', challanNo:o.challanNo||'', challanDate:date, receivedDate:date,
+    qtyReceived:+o.qty, qtyRemaining:+o.qty, locationId:o.locationId||materialById(o.materialId)?.locationId||'',
+    inspectionStatus:o.inspectionStatus||'Accepted', tag, expiryDate, remarks:o.remarks||''
+  };
+  DB.batches.push(batch);
+  logTxn({date, materialId:o.materialId, batchId:batch.id, type:'Inward', ref:batch.inwardNo+' / GRN '+grnNo, qtyIn: (tag==='green'?+o.qty:0), remarks:'GRN generated, batch '+identNo});
+  if(showMsg) showToast(`Inward saved — Identification No. ${identNo}`);
+  return batch;
+}
+
+function fifoAllocate(materialId, qtyNeeded){
+  const batches = usableBatchesFIFO(materialId);
+  let remaining = qtyNeeded, plan=[];
+  for(const b of batches){
+    if(remaining<=0) break;
+    const take = Math.min(b.qtyRemaining, remaining);
+    if(take>0){ plan.push({batchId:b.id, identNo:b.identNo, qty:take, receivedDate:b.receivedDate}); remaining -= take; }
+  }
+  return { plan, shortfall: remaining };
+}
+
+function doIssue({requisitionId, items, issuedBy, date}){
+  DB.seq.issue++;
+  const issueNo = uid('ISS', DB.seq.issue);
+  const record = { id:'iss_'+DB.seq.issue, issueNo, requisitionId: requisitionId||null, date: date||todayISO(), issuedBy: issuedBy||'Store Incharge', items:[] };
+  items.forEach(it=>{
+    const { plan, shortfall } = fifoAllocate(it.materialId, it.qty);
+    plan.forEach(p=>{
+      const b = batchById(p.batchId); b.qtyRemaining -= p.qty;
+      logTxn({date: record.date, materialId: it.materialId, batchId:b.id, type:'Issue', ref:issueNo, qtyOut:p.qty, remarks:'FIFO issue'});
+      record.items.push({materialId: it.materialId, batchId:b.id, identNo:b.identNo, qty:p.qty});
+    });
+    if(shortfall>0){ record.items.push({materialId: it.materialId, batchId:null, identNo:'—', qty:shortfall, shortfall:true}); }
+  });
+  DB.issues.push(record);
+  if(requisitionId){ const r=DB.requisitions.find(r=>r.id===requisitionId); if(r) r.status='Issued'; }
+  return record;
+}
+
+function doOutward(o){
+  DB.seq.outward++;
+  const dcNo = uid('DC', DB.seq.outward);
+  const record = { id:'out_'+DB.seq.outward, dcNo, customerId:o.customerId, date:o.date||todayISO(),
+    vehicle:o.vehicle||'', driver:o.driver||'', destination:o.destination||'', remarks:o.remarks||'', items:[] };
+  o.items.forEach(it=>{
+    const { plan, shortfall } = fifoAllocate(it.materialId, it.qty);
+    plan.forEach(p=>{
+      const b = batchById(p.batchId); b.qtyRemaining -= p.qty;
+      logTxn({date:record.date, materialId:it.materialId, batchId:b.id, type:'Outward', ref:dcNo, qtyOut:p.qty, remarks:'Dispatch'});
+      record.items.push({materialId:it.materialId, batchId:b.id, identNo:b.identNo, qty:p.qty});
+    });
+    if(shortfall>0) record.items.push({materialId:it.materialId, batchId:null, identNo:'—', qty:shortfall, shortfall:true});
+  });
+  DB.outwards.push(record);
+  return record;
+}
+
+function doScrap(o){
+  DB.seq.scrap++;
+  const scrapNo = uid('SCR', DB.seq.scrap);
+  const b = o.batchId ? batchById(o.batchId) : null;
+  if(b){ b.qtyRemaining = Math.max(0, b.qtyRemaining - o.qty); }
+  const rec = { id:'scr_'+DB.seq.scrap, scrapNo, date:o.date||todayISO(), materialId:o.materialId, batchId:o.batchId||null,
+    identNo: b?b.identNo:'—', qty:o.qty, reason:o.reason, department:o.department||'', approvedBy:o.approvedBy||'', disposalMethod:o.disposalMethod||'' };
+  DB.scraps.push(rec);
+  logTxn({date:rec.date, materialId:o.materialId, batchId:o.batchId, type:'Scrap', ref:scrapNo, qtyOut:o.qty, remarks:o.reason});
+  return rec;
+}
+
+/* ================= RENDER ENGINE ================= */
+const NAV = [
+  {group:'', items:[ {id:'dashboard', label:'Dashboard', ic:'⌂'} ]},
+  {group:'Store', items:[
+    {id:'materials', label:'Material Master', ic:'▤'},
+    {id:'suppliers', label:'Suppliers', ic:'▣'},
+    {id:'customers', label:'Customers', ic:'◧'},
+    {id:'locations', label:'Storage Locations', ic:'▦'},
+    {id:'tags', label:'Tags', ic:'●'},
+  ]},
+  {group:'Inward', items:[
+    {id:'inward-new', label:'New Inward', ic:'↓'},
+    {id:'inward-register', label:'Inward Register', ic:'≡'},
+  ]},
+  {group:'Inventory', items:[
+    {id:'stock', label:'Current Stock', ic:'▥'},
+    {id:'stock-register', label:'Stock Register', ic:'≣'},
+    {id:'expiry', label:'Expiry', ic:'⏱', badgeKey:'expiry'},
+    {id:'reorder', label:'Reorder Alerts', ic:'⚠', badgeKey:'reorder'},
+  ]},
+  {group:'Material Issue', items:[
+    {id:'requisition-new', label:'New Requisition', ic:'+'},
+    {id:'requisitions', label:'Requisitions', ic:'☰', badgeKey:'pendingReq'},
+    {id:'issues', label:'Issue Register', ic:'↥'},
+  ]},
+  {group:'Outward', items:[
+    {id:'outward-new', label:'New Outward', ic:'↑'},
+    {id:'outward-register', label:'Outward Register', ic:'≡'},
+  ]},
+  {group:'Scrap', items:[
+    {id:'scrap-new', label:'New Scrap Entry', ic:'♻'},
+    {id:'scrap-register', label:'Scrap Register', ic:'≡'},
+  ]},
+  {group:'Control', items:[
+    {id:'audit', label:'Stock Audit', ic:'✓'},
+    {id:'traceability', label:'Traceability', ic:'⌕'},
+  ]},
+  {group:'Reports', items:[
+    {id:'reports', label:'All Reports', ic:'▧'},
+    {id:'kpi', label:'Management KPIs', ic:'◆'},
+  ]},
+];
+
+function badgeCounts(){
+  return {
+    reorder: DB.materials.filter(m=>currentStock(m.id) < m.reorderLevel).length,
+    expiry: DB.batches.filter(b=>b.expiryDate && b.tag==='green' && daysBetween(todayISO(), b.expiryDate) <= 7).length,
+    pendingReq: DB.requisitions.filter(r=>r.status==='Pending').length,
+  };
+}
+
+function renderSidebar(){
+  const bc = badgeCounts();
+  let html = `<div class="brand">
+      <div class="name">${escapeHtml(DB.settings.companyName)}</div>
+      <div class="sub">DIGITAL STORES</div>
+      <div class="doc">${escapeHtml(DB.settings.docRef)} · ISO 9001:2015</div>
+    </div><nav>`;
+  NAV.forEach(g=>{
+    if(g.group) html += `<div class="nav-title">${g.group}</div>`;
+    g.items.forEach(it=>{
+      const active = ROUTE===it.id ? ' active':'';
+      const badge = it.badgeKey && bc[it.badgeKey] ? `<span class="nav-badge">${bc[it.badgeKey]}</span>` : '';
+      html += `<div class="nav-item${active}" onclick="navigate('${it.id}')"><span class="ic">${it.ic}</span>${it.label}${badge}</div>`;
+    });
+  });
+  html += `</nav><div class="sidebar-foot">Store & Sales SOP<br>KKI-QMS-06 · Rev 02${CURRENT_USER?`<div style="margin-top:8px;padding-top:8px;border-top:1px solid #232833;">Signed in: <b>${escapeHtml(CURRENT_USER)}</b><br><a href="#" onclick="doLogout();return false;" style="color:var(--sidebar-ink-dim);">Sign out</a></div>`:''}</div>`;
+  document.getElementById('sidebar').innerHTML = html;
+}
+
+function navigate(route, sub){ ROUTE = route; ROUTE_SUB = sub||null; render(); }
+
+function render(){
+  document.getElementById('app').innerHTML = `<div id="sidebar"></div><div id="main"></div>`;
+  renderSidebar();
+  const main = document.getElementById('main');
+  const routes = {
+    dashboard: renderDashboard, materials: renderMaterials, suppliers: renderSuppliers, customers: renderCustomers,
+    locations: renderLocations, tags: renderTags, 'inward-new': renderInwardNew, 'inward-register': renderInwardRegister,
+    stock: renderStock, 'stock-register': renderStockRegister, expiry: renderExpiry, reorder: renderReorder,
+    'requisition-new': renderRequisitionNew, requisitions: renderRequisitions, issues: renderIssues,
+    'outward-new': renderOutwardNew, 'outward-register': renderOutwardRegister,
+    'scrap-new': renderScrapNew, 'scrap-register': renderScrapRegister,
+    audit: renderAudit, traceability: renderTraceability, reports: renderReports, kpi: renderKPI,
+  };
+  (routes[ROUTE] || renderDashboard)(main);
+}
+
+/* ---------- shared UI builders ---------- */
+function pageHead(title, desc, actionHtml){
+  return `<div class="topbar"><div><h1>${title}</h1><div class="desc">${desc}</div></div><div>${actionHtml||''}</div></div>`;
+}
+function emptyState(msg, icon){
+  return `<div class="empty-state"><div class="big">${icon||'—'}</div>${msg}</div>`;
+}
+function modal(title, bodyHtml, footHtml, id){
+  const wrap = document.createElement('div');
+  wrap.className='overlay'; wrap.id = id||'modalOverlay';
+  wrap.innerHTML = `<div class="modal">
+    <div class="modal-head"><h3>${title}</h3><button class="modal-close" onclick="closeModal('${id||'modalOverlay'}')">&times;</button></div>
+    <div class="modal-body">${bodyHtml}</div>
+    <div class="modal-foot">${footHtml}</div>
+  </div>`;
+  wrap.addEventListener('click', e=>{ if(e.target===wrap) closeModal(id||'modalOverlay'); });
+  document.body.appendChild(wrap);
+}
+function closeModal(id){ const m = document.getElementById(id||'modalOverlay'); if(m) m.remove(); }
+function val(id){ const el=document.getElementById(id); return el ? el.value : ''; }
+function checked(id){ const el=document.getElementById(id); return el ? el.checked : false; }
+
+function tagPill(tag){
+  const def = DB.tagDefs.find(t=>t.code===tag);
+  const label = tag ? tag.charAt(0).toUpperCase()+tag.slice(1) : '—';
+  return `<span class="tag ${tag}"><span class="dot ${tag}"></span>${label}</span>`;
+}
+function optionsFor(list, valueKey, labelFn, selected){
+  return list.map(x=>`<option value="${x[valueKey]}" ${x[valueKey]===selected?'selected':''}>${escapeHtml(labelFn(x))}</option>`).join('');
+}
+
+/* ================= DASHBOARD ================= */
+function renderDashboard(main){
+  const totalItems = DB.materials.length;
+  const lowStock = DB.materials.filter(m=>currentStock(m.id) < m.reorderLevel).length;
+  const expiringSoon = DB.batches.filter(b=>b.expiryDate && b.tag==='green' && daysBetween(todayISO(),b.expiryDate)<=7 && daysBetween(todayISO(),b.expiryDate)>=0).length;
+  const blocked = DB.batches.filter(b=>b.tag==='red').length;
+  const today = todayISO();
+  const todayInward = DB.batches.filter(b=>b.receivedDate===today).length;
+  const todayIssue = DB.issues.filter(i=>i.date===today).length;
+  const todayOutward = DB.outwards.filter(o=>o.date===today).length;
+  const todayScrap = DB.scraps.filter(s=>s.date===today).length;
+  const pendingReq = DB.requisitions.filter(r=>r.status==='Pending').length;
+  const auditDiffs = DB.audits.length ? DB.audits[DB.audits.length-1].items.filter(i=>i.difference!==0).length : 0;
+
+  let recent = [];
+  DB.batches.slice(-3).forEach(b=>recent.push({t:b.receivedDate, txt:`${b.inwardNo} — Material received (${materialById(b.materialId)?.name||''})`, tag:'Inward'}));
+  DB.issues.slice(-3).forEach(i=>recent.push({t:i.date, txt:`${i.issueNo} — Material issued`, tag:'Issue'}));
+  DB.outwards.slice(-3).forEach(o=>recent.push({t:o.date, txt:`${o.dcNo} — Material dispatched`, tag:'Outward'}));
+  recent.sort((a,b)=> (a.t<b.t?1:-1));
+  recent = recent.slice(0,6);
+
+  main.innerHTML = pageHead('Store Dashboard', 'Live overview — ' + fmtDate(today)) + `
+    <div class="grid cards4" style="margin-bottom:14px;">
+      <div class="card stat"><div class="label">Total Materials</div><div class="value">${totalItems}</div></div>
+      <div class="card stat"><div class="label">Low Stock</div><div class="value ${lowStock?'warn':''}">${lowStock}</div></div>
+      <div class="card stat"><div class="label">Expiring ≤7 Days</div><div class="value ${expiringSoon?'warn':''}">${expiringSoon}</div></div>
+      <div class="card stat"><div class="label">Blocked / Rejected</div><div class="value ${blocked?'danger':''}">${blocked}</div></div>
+    </div>
+    <div class="grid cards4" style="margin-bottom:18px;">
+      <div class="card stat"><div class="label">Today's Inward</div><div class="value">${todayInward}</div></div>
+      <div class="card stat"><div class="label">Today's Issue</div><div class="value">${todayIssue}</div></div>
+      <div class="card stat"><div class="label">Today's Outward</div><div class="value">${todayOutward}</div></div>
+      <div class="card stat"><div class="label">Today's Scrap</div><div class="value">${todayScrap}</div></div>
+    </div>
+    <div class="grid cards2">
+      <div class="panel">
+        <div class="panel-head"><h3>⚠ Action Required</h3></div>
+        <div class="panel-body">
+          <div class="alert-list">
+            ${lowStock ? `<div class="alert-item warn"><span class="ic">⚠</span><span><b>${lowStock}</b> material(s) below reorder level — <span class="link-btn" onclick="navigate('reorder')">view</span></span></div>` : ''}
+            ${expiringSoon ? `<div class="alert-item warn"><span class="ic">⏱</span><span><b>${expiringSoon}</b> batch(es) approaching expiry — <span class="link-btn" onclick="navigate('expiry')">view</span></span></div>` : ''}
+            ${pendingReq ? `<div class="alert-item warn"><span class="ic">☰</span><span><b>${pendingReq}</b> pending material requisition(s) — <span class="link-btn" onclick="navigate('requisitions')">view</span></span></div>` : ''}
+            ${blocked ? `<div class="alert-item danger"><span class="ic">⛔</span><span><b>${blocked}</b> rejected/blocked batch(es)</span></div>` : ''}
+            ${auditDiffs ? `<div class="alert-item warn"><span class="ic">✓</span><span><b>${auditDiffs}</b> stock differences in last audit — <span class="link-btn" onclick="navigate('audit')">view</span></span></div>` : ''}
+            ${(!lowStock && !expiringSoon && !pendingReq && !blocked && !auditDiffs) ? `<div class="muted">Nothing needs attention right now.</div>` : ''}
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h3>Recent Transactions</h3></div>
+        <div class="panel-body">
+          ${recent.length ? recent.map(r=>`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line-soft);font-size:13px;">
+              <span>${r.txt}</span><span class="muted">${fmtDate(r.t)}</span></div>`).join('') : emptyState('No transactions yet.')}
+        </div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:14px;">
+      <div class="panel-head"><h3>Store Process Flow (per KKI-QMS-06)</h3></div>
+      <div class="panel-body">
+        <div class="flow-row">
+          <span class="flow-chip">Supplier / Customer</span><span class="flow-arrow">→</span>
+          <span class="flow-chip">Inward &amp; Doc Verification</span><span class="flow-arrow">→</span>
+          <span class="flow-chip">Inspection</span><span class="flow-arrow">→</span>
+          <span class="flow-chip">GRN &amp; Identification No.</span><span class="flow-arrow">→</span>
+          <span class="flow-chip">Storage</span>
+        </div>
+        <div class="flow-row">
+          <span class="flow-chip">Stock (FIFO)</span><span class="flow-arrow">→</span>
+          <span class="flow-chip">Requisition</span><span class="flow-arrow">→</span>
+          <span class="flow-chip">Material Issue</span><span class="flow-arrow">→</span>
+          <span class="flow-chip">Production</span><span class="flow-arrow">→</span>
+          <span class="flow-chip">Outward / Dispatch</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/* ================= MATERIALS ================= */
+
+/* ================= LEGACY DATA IMPORT (RM master sheet) ================= */
+const LEGACY_RM_MATERIALS = [{"partNo": "3084620", "name": "Oil Manifold", "category": "Al extrusion", "rmSpec": "length - 1066mm", "extrusionNo": "PF9036", "cuttingLengthMm": "", "rmWeightKg": "1.38", "totalCuttingLength": "", "rmRequiredKg": "1.38", "supplierName": "Sudal Industries"}, {"partNo": "3084621", "name": "Oil Manifold", "category": "Al extrusion", "rmSpec": "length - 550mm", "extrusionNo": "PF9036", "cuttingLengthMm": "", "rmWeightKg": "0.71", "totalCuttingLength": "", "rmRequiredKg": "0.71", "supplierName": "Sudal Industries"}, {"partNo": "3084622", "name": "Oil Manifold", "category": "Al extrusion", "rmSpec": "length - 550mm", "extrusionNo": "PF9036", "cuttingLengthMm": "", "rmWeightKg": "0.71", "totalCuttingLength": "", "rmRequiredKg": "0.71", "supplierName": "Sudal Industries"}, {"partNo": "3084623", "name": "Oil Manifold", "category": "Al extrusion", "rmSpec": "length - 800mm", "extrusionNo": "PF9036", "cuttingLengthMm": "", "rmWeightKg": "1.04", "totalCuttingLength": "", "rmRequiredKg": "1.04", "supplierName": "Sudal Industries"}, {"partNo": "3084624", "name": "Oil Manifold", "category": "Al extrusion", "rmSpec": "length - 800mm", "extrusionNo": "PF9036", "cuttingLengthMm": "", "rmWeightKg": "1.04", "totalCuttingLength": "", "rmRequiredKg": "1.04", "supplierName": "Sudal Industries"}, {"partNo": "3633214", "name": "Fuel Manifold", "category": "Al extrusion", "rmSpec": "length - 715mm", "extrusionNo": "PF-9070", "cuttingLengthMm": "", "rmWeightKg": "0.74", "totalCuttingLength": "", "rmRequiredKg": "0.74", "supplierName": "Sudal Industries"}, {"partNo": "3633215", "name": "Fuel Manifold", "category": "Al extrusion", "rmSpec": "length - 625mm", "extrusionNo": "PF-9070", "cuttingLengthMm": "", "rmWeightKg": "0.66", "totalCuttingLength": "", "rmRequiredKg": "0.66", "supplierName": "Sudal Industries"}, {"partNo": "3633216", "name": "Fuel Manifold", "category": "Al extrusion", "rmSpec": "length - 965mm", "extrusionNo": "PF-9070", "cuttingLengthMm": "", "rmWeightKg": "1.02", "totalCuttingLength": "", "rmRequiredKg": "1.02", "supplierName": "Sudal Industries"}, {"partNo": "3633217", "name": "Fuel Manifold", "category": "Al extrusion", "rmSpec": "length - 875mm", "extrusionNo": "PF-9070", "cuttingLengthMm": "", "rmWeightKg": "0.93", "totalCuttingLength": "", "rmRequiredKg": "0.93", "supplierName": "Sudal Industries"}, {"partNo": "3200738", "name": "Fuel Manifold", "category": "Al extrusion", "rmSpec": "", "extrusionNo": "", "cuttingLengthMm": "", "rmWeightKg": "1.21", "totalCuttingLength": "", "rmRequiredKg": "1.21", "supplierName": "Sudal Industries"}, {"partNo": "3009482", "name": "Bracket idler pulley", "category": "MS bar", "rmSpec": "40X25", "extrusionNo": "", "cuttingLengthMm": "174", "rmWeightKg": "1.37", "totalCuttingLength": "174", "rmRequiredKg": "1.37", "supplierName": ""}, {"partNo": "3034830", "name": "Retainer seal", "category": "Al Casting", "rmSpec": "", "extrusionNo": "", "cuttingLengthMm": "", "rmWeightKg": "0.115", "totalCuttingLength": "", "rmRequiredKg": "0.115", "supplierName": "Flamingo Castings"}, {"partNo": "3069680", "name": "Adapter o ring", "category": "MS", "rmSpec": "Dia-60mm", "extrusionNo": "", "cuttingLengthMm": "28", "rmWeightKg": "0.62", "totalCuttingLength": "28", "rmRequiredKg": "0.62", "supplierName": ""}, {"partNo": "55280002", "name": "Forging nut", "category": "Forging", "rmSpec": "", "extrusionNo": "", "cuttingLengthMm": "", "rmWeightKg": "", "totalCuttingLength": "", "rmRequiredKg": "", "supplierName": "Singh And Sons"}, {"partNo": "51770101", "name": "Interface plate", "category": "MS", "rmSpec": "10mm sheet", "extrusionNo": "", "cuttingLengthMm": "288", "rmWeightKg": "0.9", "totalCuttingLength": "288", "rmRequiredKg": "0.9", "supplierName": ""}, {"partNo": "46230005", "name": "Base", "category": "Al bar", "rmSpec": "20 x 25", "extrusionNo": "", "cuttingLengthMm": "127", "rmWeightKg": "0.173", "totalCuttingLength": "0", "rmRequiredKg": "0.0", "supplierName": "Sudal Industries"}, {"partNo": "55280004", "name": "Forging nut", "category": "Forging", "rmSpec": "", "extrusionNo": "", "cuttingLengthMm": "", "rmWeightKg": "", "totalCuttingLength": "0", "rmRequiredKg": "0.0", "supplierName": "Singh and Sons"}, {"partNo": "46271002", "name": "Embase", "category": "Al bar", "rmSpec": "20 x 30", "extrusionNo": "", "cuttingLengthMm": "127", "rmWeightKg": "0.21", "totalCuttingLength": "127", "rmRequiredKg": "0.21", "supplierName": "Sudal Industries"}, {"partNo": "29720085", "name": "Tube Assembly", "category": "Raw Material", "rmSpec": "", "extrusionNo": "", "cuttingLengthMm": "", "rmWeightKg": "", "totalCuttingLength": "0", "rmRequiredKg": "0.0", "supplierName": ""}, {"partNo": "29670077", "name": "Nut", "category": "Raw Material", "rmSpec": "", "extrusionNo": "", "cuttingLengthMm": "", "rmWeightKg": "", "totalCuttingLength": "0", "rmRequiredKg": "0.0", "supplierName": ""}, {"partNo": "29720081", "name": "Pipe", "category": "Raw Material", "rmSpec": "", "extrusionNo": "", "cuttingLengthMm": "", "rmWeightKg": "", "totalCuttingLength": "0", "rmRequiredKg": "0.0", "supplierName": ""}, {"partNo": "", "name": "Support Filter", "category": "Raw Material", "rmSpec": "", "extrusionNo": "", "cuttingLengthMm": "", "rmWeightKg": "", "totalCuttingLength": "", "rmRequiredKg": "", "supplierName": ""}, {"partNo": "", "name": "Fuild Fitting Nut", "category": "Raw Material", "rmSpec": "", "extrusionNo": "", "cuttingLengthMm": "", "rmWeightKg": "", "totalCuttingLength": "", "rmRequiredKg": "", "supplierName": ""}, {"partNo": "3910131", "name": "Spacer Fan Pilot", "category": "Al Extrusion", "rmSpec": "", "extrusionNo": "PF11047", "cuttingLengthMm": "", "rmWeightKg": "", "totalCuttingLength": "", "rmRequiredKg": "", "supplierName": "Sudal Industries"}, {"partNo": "3927640", "name": "Spacer Fan Pilot", "category": "Al Extrusion", "rmSpec": "", "extrusionNo": "PF11047", "cuttingLengthMm": "", "rmWeightKg": "", "totalCuttingLength": "", "rmRequiredKg": "", "supplierName": "Sudal Industries"}, {"partNo": "A041V936", "name": "Spacer Fan", "category": "Al Extrusion", "rmSpec": "", "extrusionNo": "", "cuttingLengthMm": "79.5", "rmWeightKg": "0.33", "totalCuttingLength": "79.5", "rmRequiredKg": "0.33", "supplierName": "Sudal Industries"}, {"partNo": "A042L866", "name": "Spacer Fan", "category": "Al Extrusion", "rmSpec": "", "extrusionNo": "", "cuttingLengthMm": "68", "rmWeightKg": "0.286", "totalCuttingLength": "68", "rmRequiredKg": "0.286", "supplierName": "Sudal Industries"}, {"partNo": "", "name": "Control arm upper", "category": "Raw Material", "rmSpec": "", "extrusionNo": "", "cuttingLengthMm": "", "rmWeightKg": "", "totalCuttingLength": "", "rmRequiredKg": "", "supplierName": ""}, {"partNo": "", "name": "Control arm lower", "category": "Raw Material", "rmSpec": "", "extrusionNo": "", "cuttingLengthMm": "", "rmWeightKg": "", "totalCuttingLength": "", "rmRequiredKg": "", "supplierName": ""}, {"partNo": "3030487", "name": "Spacer bearing", "category": "Round bar", "rmSpec": "Dia - 40mm", "extrusionNo": "", "cuttingLengthMm": "38", "rmWeightKg": "0.375", "totalCuttingLength": "38", "rmRequiredKg": "0.375", "supplierName": "Hindustan , Ridhi sidhi , Vishal Alloys"}, {"partNo": "", "name": "Brace Water Pump", "category": "Raw Material", "rmSpec": "", "extrusionNo": "", "cuttingLengthMm": "", "rmWeightKg": "", "totalCuttingLength": "", "rmRequiredKg": "", "supplierName": ""}, {"partNo": "", "name": "Body water pump", "category": "Raw Material", "rmSpec": "", "extrusionNo": "", "cuttingLengthMm": "", "rmWeightKg": "", "totalCuttingLength": "", "rmRequiredKg": "", "supplierName": ""}, {"partNo": "", "name": "Jumper Assembly", "category": "Raw Material", "rmSpec": "", "extrusionNo": "", "cuttingLengthMm": "", "rmWeightKg": "", "totalCuttingLength": "", "rmRequiredKg": "", "supplierName": ""}, {"partNo": "", "name": "Diffuser", "category": "Raw Material", "rmSpec": "", "extrusionNo": "", "cuttingLengthMm": "", "rmWeightKg": "", "totalCuttingLength": "", "rmRequiredKg": "", "supplierName": ""}, {"partNo": "", "name": "Piston Cooling tube", "category": "Raw Material", "rmSpec": "", "extrusionNo": "", "cuttingLengthMm": "", "rmWeightKg": "", "totalCuttingLength": "", "rmRequiredKg": "", "supplierName": ""}, {"partNo": "", "name": "Cover Filter", "category": "Raw Material", "rmSpec": "", "extrusionNo": "", "cuttingLengthMm": "", "rmWeightKg": "", "totalCuttingLength": "", "rmRequiredKg": "", "supplierName": ""}, {"partNo": "", "name": "Seal Compressor Bearing", "category": "Raw Material", "rmSpec": "", "extrusionNo": "", "cuttingLengthMm": "", "rmWeightKg": "", "totalCuttingLength": "", "rmRequiredKg": "", "supplierName": ""}, {"partNo": "", "name": "Cover axu drive", "category": "Raw Material", "rmSpec": "", "extrusionNo": "", "cuttingLengthMm": "", "rmWeightKg": "", "totalCuttingLength": "", "rmRequiredKg": "", "supplierName": ""}, {"partNo": "", "name": "Cover Impeller", "category": "Raw Material", "rmSpec": "", "extrusionNo": "", "cuttingLengthMm": "", "rmWeightKg": "", "totalCuttingLength": "", "rmRequiredKg": "", "supplierName": ""}, {"partNo": "", "name": "Ring Carrier", "category": "Raw Material", "rmSpec": "", "extrusionNo": "", "cuttingLengthMm": "", "rmWeightKg": "", "totalCuttingLength": "", "rmRequiredKg": "", "supplierName": ""}, {"partNo": "", "name": "Seal Impeller", "category": "Raw Material", "rmSpec": "", "extrusionNo": "", "cuttingLengthMm": "", "rmWeightKg": "", "totalCuttingLength": "", "rmRequiredKg": "", "supplierName": ""}, {"partNo": "", "name": "Seal Compressor Bearing", "category": "Raw Material", "rmSpec": "", "extrusionNo": "", "cuttingLengthMm": "", "rmWeightKg": "", "totalCuttingLength": "", "rmRequiredKg": "", "supplierName": ""}, {"partNo": "", "name": "Jumper Assembly", "category": "Raw Material", "rmSpec": "", "extrusionNo": "", "cuttingLengthMm": "", "rmWeightKg": "", "totalCuttingLength": "", "rmRequiredKg": "", "supplierName": ""}, {"partNo": "", "name": "Flange", "category": "Raw Material", "rmSpec": "", "extrusionNo": "", "cuttingLengthMm": "", "rmWeightKg": "", "totalCuttingLength": "", "rmRequiredKg": "", "supplierName": ""}, {"partNo": "", "name": "Spindle", "category": "Raw Material", "rmSpec": "", "extrusionNo": "", "cuttingLengthMm": "", "rmWeightKg": "", "totalCuttingLength": "", "rmRequiredKg": "", "supplierName": ""}, {"partNo": "", "name": "Bracket", "category": "Raw Material", "rmSpec": "", "extrusionNo": "", "cuttingLengthMm": "", "rmWeightKg": "", "totalCuttingLength": "", "rmRequiredKg": "", "supplierName": ""}];
+function materialDedupeKey(m){
+  if(m.partNo) return 'P:'+String(m.partNo).trim().toLowerCase();
+  return 'N:'+String(m.name||'').trim().toLowerCase()+'|'+String(m.extrusionNo||'').trim().toLowerCase()+'|'+String(m.rmSpec||'').trim().toLowerCase();
+}
+/* Shared import engine — used by both the built-in legacy dataset and the Upload Excel feature */
+function importMaterialRows(rows){
+  let addedMat=0, skippedMat=0, addedSup=0;
+  const supplierCache = {};
+  DB.suppliers.forEach(s=> supplierCache[s.name.trim().toLowerCase()] = s);
+  function ensureSupplier(name){
+    if(!name) return '';
+    const key = String(name).trim().toLowerCase();
+    if(supplierCache[key]) return supplierCache[key].id;
+    const s = addSupplierRaw(String(name).trim(), '', '', '', '', '');
+    supplierCache[key] = s; addedSup++;
+    return s.id;
+  }
+  const existingKeys = new Set(DB.materials.map(materialDedupeKey));
+  rows.forEach(r=>{
+    if(!r.name && !r.partNo) return;
+    const key = materialDedupeKey(r);
+    if(existingKeys.has(key)){ skippedMat++; return; }
+    const supplierId = ensureSupplier(r.supplierName);
+    addMaterialRaw({
+      name:r.name||r.partNo, category:r.category||'Raw Material', spec:r.rmSpec||'', unit:'PCS',
+      supplierId, partNo:r.partNo, extrusionNo:r.extrusionNo, rmSpec:r.rmSpec,
+      cuttingLengthMm:r.cuttingLengthMm, rmWeightKg:r.rmWeightKg,
+      totalCuttingLength:r.totalCuttingLength, rmRequiredKg:r.rmRequiredKg
+    });
+    existingKeys.add(key);
+    addedMat++;
+  });
+  DB.settings.legacyRMImported = true;
+  saveDB();
+  return { addedMat, skippedMat, addedSup };
+}
+function importLegacyMaterials(){
+  const {addedMat, skippedMat, addedSup} = importMaterialRows(LEGACY_RM_MATERIALS);
+  showToast(`Imported ${addedMat} materials, ${addedSup} new suppliers${skippedMat?` (${skippedMat} already imported, skipped)`:''}`);
+  renderMaterials(document.getElementById('main'));
+}
+
+/* ---------- Upload Excel (self-serve import) ---------- */
+const EXCEL_FIELD_CANDIDATES = {
+  partNo: ['partnumber','partno'],
+  name: ['partname','materialname','name','itemname'],
+  category: ['rm','category','materialtype','rawmaterial'],
+  rmSpec: ['rmspecifications','rmspecification','specification','spec','materialspecification'],
+  extrusionNo: ['extrusionnumber','extrusionno'],
+  cuttingLengthMm: ['cuttinglengthinmm','cuttinglength','cuttinglengthmm'],
+  rmWeightKg: ['rmweight','weight'],
+  totalCuttingLength: ['totalcuttinglength'],
+  rmRequiredKg: ['rmrequiredinkg','rmrequired'],
+  supplierName: ['suppliername','supplier','materialsupplier'],
+};
+function normHeader(h){ return String(h).toLowerCase().replace(/[^a-z0-9]/g,''); }
+function mapExcelRow(row){
+  const normMap = {};
+  Object.keys(row).forEach(k=> normMap[normHeader(k)] = row[k]);
+  const out = {};
+  Object.entries(EXCEL_FIELD_CANDIDATES).forEach(([field, cands])=>{
+    let v = '';
+    for(const c of cands){ if(normMap[c]!==undefined && String(normMap[c]).trim()!==''){ v = String(normMap[c]).trim(); break; } }
+    out[field] = v;
+  });
+  return out;
+}
+let PENDING_IMPORT_ROWS = [];
+function triggerExcelUpload(){ document.getElementById('excelUploadInput').click(); }
+async function handleExcelUpload(e){
+  const file = e.target.files[0]; e.target.value=''; if(!file) return;
+  try{
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data, {type:'array'});
+    const sheetName = wb.SheetNames.find(n=>n.trim().toLowerCase()==='rm') || wb.SheetNames[0];
+    const json = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {defval:''});
+    const rows = json.map(mapExcelRow).filter(r=>r.name || r.partNo);
+    if(!rows.length){ showToast('No usable rows found in "'+sheetName+'" — check column headers'); return; }
+    PENDING_IMPORT_ROWS = rows;
+    showImportPreview(sheetName, rows);
+  }catch(err){ console.error(err); showToast('⚠ Could not read that file — is it a valid .xlsx/.csv?'); }
+}
+function showImportPreview(sheetName, rows){
+  modal(`Preview Import — ${rows.length} row(s) found`, `
+    <div class="muted" style="margin-bottom:8px;">Reading sheet "<b>${escapeHtml(sheetName)}</b>". Showing first 10 rows — review before confirming.</div>
+    <div style="max-height:320px;overflow:auto;border:1px solid var(--line);border-radius:6px;">
+    <table><thead><tr><th>Part No</th><th>Name</th><th>Category</th><th>Extrusion No</th><th>RM Spec</th><th>Supplier</th></tr></thead>
+    <tbody>${rows.slice(0,10).map(r=>`<tr>
+      <td class="mono">${escapeHtml(r.partNo||'—')}</td><td>${escapeHtml(r.name||'—')}</td><td>${escapeHtml(r.category||'—')}</td>
+      <td class="mono">${escapeHtml(r.extrusionNo||'—')}</td><td>${escapeHtml(r.rmSpec||'—')}</td><td>${escapeHtml(r.supplierName||'—')}</td>
+    </tr>`).join('')}</tbody></table>
+    </div>
+  `, `<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="confirmExcelImport()">Import ${rows.length} row(s)</button>`);
+}
+function confirmExcelImport(){
+  const {addedMat, skippedMat, addedSup} = importMaterialRows(PENDING_IMPORT_ROWS);
+  PENDING_IMPORT_ROWS = [];
+  closeModal();
+  showToast(`Imported ${addedMat} materials, ${addedSup} new suppliers${skippedMat?` (${skippedMat} duplicates skipped)`:''}`);
+  renderMaterials(document.getElementById('main'));
+}
+
+function renderMaterials(main){
+  const importBtn = DB.settings.legacyRMImported
+    ? `<button class="btn ghost" onclick="importLegacyMaterials()">↻ Re-check Legacy Import</button>`
+    : `<button class="btn ghost" onclick="importLegacyMaterials()">⇪ Import Old RM Master Data (${LEGACY_RM_MATERIALS.length})</button>`;
+  const uploadBtn = `<button class="btn ghost" onclick="triggerExcelUpload()">📄 Upload Excel</button><input type="file" id="excelUploadInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleExcelUpload(event)">`;
+  main.innerHTML = pageHead('Material Master', 'Central database of all raw materials & consumables.',
+    importBtn + ' ' + uploadBtn + ` <button class="btn primary" onclick="openMaterialForm()">+ Add Material</button>`) +
+    `<div class="search-bar"><input id="matSearch" placeholder="Search by name, code, category or extrusion no…" oninput="renderMaterialsTable()"></div>
+     <div class="panel"><div class="panel-body" style="padding:0;"><table id="matTable"></table></div></div>`;
+  renderMaterialsTable();
+}
+function renderMaterialsTable(){
+  const q = (val('matSearch')||'').toLowerCase();
+  const rows = DB.materials.filter(m=> !q || m.name.toLowerCase().includes(q) || m.code.toLowerCase().includes(q) || m.category.toLowerCase().includes(q) || (m.extrusionNo||'').toLowerCase().includes(q) || (m.partNo||'').toLowerCase().includes(q));
+  document.getElementById('matTable').innerHTML = `
+    <thead><tr><th>Code</th><th>Name</th><th>Extrusion No</th><th>Category</th><th>Spec</th><th>Unit</th><th>Location</th>
+      <th class="num">Stock</th><th class="num">Reorder</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    ${rows.length? rows.map(m=>{
+      const stock = currentStock(m.id); const loc = locationById(m.locationId);
+      const low = stock < m.reorderLevel;
+      return `<tr>
+        <td class="mono">${m.code}</td><td><b>${escapeHtml(m.name)}</b></td><td class="mono">${escapeHtml(m.extrusionNo||'—')}</td><td>${escapeHtml(m.category)}</td>
+        <td>${escapeHtml(m.spec)}</td><td>${m.unit}</td><td>${loc? loc.rack+' / '+loc.bin : '—'}</td>
+        <td class="num" style="${low?'color:var(--danger);font-weight:700;':''}">${stock}</td>
+        <td class="num muted">${m.reorderLevel}</td>
+        <td>${low?'<span class="pill pending">Low</span>':'<span class="pill issued">OK</span>'}</td>
+        <td><button class="icon-btn" onclick="openMaterialForm('${m.id}')">✎ Edit</button> <button class="icon-btn" onclick="viewMaterialSpec('${m.id}')">◇ Spec</button></td>
+      </tr>`;
+    }).join('') : `<tr class="empty-row"><td colspan="11">No materials found. Add your first material to get started.</td></tr>`}
+    </tbody>`;
+}
+function openMaterialForm(id){
+  const m = id ? materialById(id) : null;
+  const supOpts = `<option value="">—</option>` + optionsFor(DB.suppliers,'id',s=>s.name, m?m.supplierId:'');
+  const locOpts = `<option value="">—</option>` + optionsFor(DB.locations,'id',l=>l.rack+' / '+l.bin, m?m.locationId:'');
+  modal(id?'Edit Material':'Add Material', `
+    <div class="field-row">
+      <div class="field"><label>Material Name *</label><input id="f_name" value="${m?escapeHtml(m.name):''}"></div>
+      <div class="field"><label>Category</label><input id="f_cat" value="${m?escapeHtml(m.category):'Raw Material'}"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Specification</label><input id="f_spec" value="${m?escapeHtml(m.spec):''}"></div>
+      <div class="field"><label>Unit</label><input id="f_unit" value="${m?m.unit:'PCS'}" placeholder="KG / PCS / SHEET / LTR"></div>
+    </div>
+    <div class="field"><label>Default Supplier</label><select id="f_sup">${supOpts}</select></div>
+    <div class="field-row3">
+      <div class="field"><label>Minimum Stock</label><input id="f_min" type="number" value="${m?m.minStock:0}"></div>
+      <div class="field"><label>Reorder Level</label><input id="f_reorder" type="number" value="${m?m.reorderLevel:0}"></div>
+      <div class="field"><label>Maximum Stock</label><input id="f_max" type="number" value="${m?m.maxStock:0}"></div>
+    </div>
+    <div class="field"><label>Default Storage Location</label><select id="f_loc">${locOpts}</select></div>
+    <div class="field-row">
+      <div class="field"><label>Shelf Life (days, 0 = N/A)</label><input id="f_shelf" type="number" value="${m?m.shelfLifeDays:0}"></div>
+      <div class="field"><label>FIFO Applicable?</label>
+        <div class="radio-group"><label><input type="radio" name="f_fifo" value="1" ${(!m||m.fifoApplicable)?'checked':''}> Yes</label>
+        <label><input type="radio" name="f_fifo" value="0" ${(m&&!m.fifoApplicable)?'checked':''}> No</label></div></div>
+    </div>
+    <div class="field"><label>Expiry / Shelf-life Tracking Applicable?</label>
+      <div class="radio-group"><label><input type="radio" name="f_exp" value="1" ${(m&&m.expiryApplicable)?'checked':''}> Yes</label>
+      <label><input type="radio" name="f_exp" value="0" ${(!m||!m.expiryApplicable)?'checked':''}> No</label></div></div>
+
+    <div class="panel-head" style="padding:10px 0 8px;border-top:1px solid var(--line);margin-top:6px;"><h3 style="font-size:13px;">Product / Extrusion Specification</h3></div>
+    <div class="field-row">
+      <div class="field"><label>Part Number (legacy ref)</label><input id="f_partno" value="${m?escapeHtml(m.partNo||''):''}"></div>
+      <div class="field"><label>Extrusion Number</label><input id="f_extno" value="${m?escapeHtml(m.extrusionNo||''):''}"></div>
+    </div>
+    <div class="field"><label>RM Specification</label><input id="f_rmspec" value="${m?escapeHtml(m.rmSpec||''):''}"></div>
+    <div class="field-row3">
+      <div class="field"><label>Length (mm)</label><input id="f_len" type="number" value="${m?m.lengthMm||'':''}"></div>
+      <div class="field"><label>Width (mm)</label><input id="f_wid" type="number" value="${m?m.widthMm||'':''}"></div>
+      <div class="field"><label>Cutting Length (mm)</label><input id="f_cutlen" type="number" value="${m?m.cuttingLengthMm||'':''}"></div>
+    </div>
+    <div class="field-row3">
+      <div class="field"><label>RM Weight (kg)</label><input id="f_rmwt" type="number" step="0.001" value="${m?m.rmWeightKg||'':''}"></div>
+      <div class="field"><label>Total Cutting Length</label><input id="f_totcut" type="number" value="${m?m.totalCuttingLength||'':''}"></div>
+      <div class="field"><label>RM Required (kg)</label><input id="f_rmreq" type="number" step="0.001" value="${m?m.rmRequiredKg||'':''}"></div>
+    </div>
+  `, `<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="saveMaterial('${id||''}')">Save Material</button>`);
+}
+function saveMaterial(id){
+  const name = val('f_name').trim();
+  if(!name){ showToast('Material name is required'); return; }
+  const data = {
+    name, category: val('f_cat')||'Raw Material', spec: val('f_spec'), unit: val('f_unit')||'PCS',
+    supplierId: val('f_sup'), minStock:+val('f_min')||0, reorderLevel:+val('f_reorder')||0, maxStock:+val('f_max')||0,
+    locationId: val('f_loc'), shelfLifeDays:+val('f_shelf')||0,
+    fifoApplicable: document.querySelector('input[name=f_fifo]:checked').value==='1',
+    expiryApplicable: document.querySelector('input[name=f_exp]:checked').value==='1',
+    extrusionNo: val('f_extno'), rmSpec: val('f_rmspec'), partNo: val('f_partno'),
+    lengthMm: val('f_len'), widthMm: val('f_wid'), cuttingLengthMm: val('f_cutlen'),
+    rmWeightKg: val('f_rmwt'), totalCuttingLength: val('f_totcut'), rmRequiredKg: val('f_rmreq'),
+  };
+  if(id){ Object.assign(materialById(id), data); showToast('Material updated'); }
+  else { addMaterialRaw(data); showToast('Material added — code generated'); }
+  closeModal(); saveDB(); renderMaterials(document.getElementById('main'));
+}
+
+function viewMaterialSpec(id){
+  const m = materialById(id);
+  if(!m) return;
+  const sup = supplierById(m.supplierId);
+  modal('Product Specification — '+m.name, `
+    <div class="kv">
+      <div class="k">Material Code</div><div class="v mono">${m.code}</div>
+      <div class="k">Part Number</div><div class="v mono">${escapeHtml(m.partNo||'—')}</div>
+      <div class="k">Extrusion Number</div><div class="v mono">${escapeHtml(m.extrusionNo||'—')}</div>
+      <div class="k">RM Specification</div><div class="v">${escapeHtml(m.rmSpec||'—')}</div>
+      <div class="k">Supplier</div><div class="v">${sup?escapeHtml(sup.name):'—'}</div>
+      <div class="k">Size (L × W)</div><div class="v">${m.lengthMm||'—'} × ${m.widthMm||'—'} mm</div>
+      <div class="k">Cutting Length</div><div class="v">${m.cuttingLengthMm||'—'} mm</div>
+      <div class="k">Total Cutting Length</div><div class="v">${m.totalCuttingLength||'—'}</div>
+      <div class="k">RM Weight</div><div class="v">${m.rmWeightKg||'—'} kg</div>
+      <div class="k">RM Required</div><div class="v">${m.rmRequiredKg||'—'} kg</div>
+    </div>
+  `, `<button class="btn ghost" onclick="closeModal()">Close</button><button class="btn primary" onclick="closeModal();openMaterialForm('${m.id}')">Edit</button>`);
+}
+
+/* ================= SUPPLIERS ================= */
+function renderSuppliers(main){
+  main.innerHTML = pageHead('Suppliers', 'Supplier master for inward material sourcing.',
+    `<button class="btn primary" onclick="openSupplierForm()">+ Add Supplier</button>`) +
+    `<div class="panel"><div class="panel-body" style="padding:0;"><table><thead><tr>
+      <th>Code</th><th>Name</th><th>Address</th><th>GST No.</th><th>Contact</th><th>Mobile</th><th></th></tr></thead>
+      <tbody>${DB.suppliers.length? DB.suppliers.map(s=>`<tr><td class="mono">${s.code}</td><td><b>${escapeHtml(s.name)}</b></td>
+        <td>${escapeHtml(s.address)}</td><td>${escapeHtml(s.gst)}</td><td>${escapeHtml(s.contact)}</td><td>${escapeHtml(s.mobile)}</td>
+        <td><button class="icon-btn" onclick="openSupplierForm('${s.id}')">✎ Edit</button></td></tr>`).join('') :
+        `<tr class="empty-row"><td colspan="7">No suppliers yet.</td></tr>`}</tbody></table></div></div>`;
+}
+function openSupplierForm(id){
+  const s = id ? supplierById(id) : null;
+  modal(id?'Edit Supplier':'Add Supplier', `
+    <div class="field"><label>Supplier Name *</label><input id="f_name" value="${s?escapeHtml(s.name):''}"></div>
+    <div class="field"><label>Address</label><textarea id="f_addr" rows="2">${s?escapeHtml(s.address):''}</textarea></div>
+    <div class="field-row">
+      <div class="field"><label>GST No.</label><input id="f_gst" value="${s?escapeHtml(s.gst):''}"></div>
+      <div class="field"><label>Contact Person</label><input id="f_contact" value="${s?escapeHtml(s.contact):''}"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Mobile</label><input id="f_mobile" value="${s?escapeHtml(s.mobile):''}"></div>
+      <div class="field"><label>Email</label><input id="f_email" value="${s?escapeHtml(s.email||''):''}"></div>
+    </div>`,
+    `<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="saveSupplier('${id||''}')">Save</button>`);
+}
+function saveSupplier(id){
+  const name = val('f_name').trim(); if(!name){ showToast('Name required'); return; }
+  const data = {name, address:val('f_addr'), gst:val('f_gst'), contact:val('f_contact'), mobile:val('f_mobile'), email:val('f_email')};
+  if(id) Object.assign(supplierById(id), data); else addSupplierRaw(name,data.address,data.gst,data.contact,data.mobile,data.email);
+  closeModal(); saveDB(); showToast('Supplier saved'); renderSuppliers(document.getElementById('main'));
+}
+
+/* ================= CUSTOMERS ================= */
+function renderCustomers(main){
+  main.innerHTML = pageHead('Customers', 'Customer master for outward dispatch & delivery challans.',
+    `<button class="btn primary" onclick="openCustomerForm()">+ Add Customer</button>`) +
+    `<div class="panel"><div class="panel-body" style="padding:0;"><table><thead><tr>
+      <th>Code</th><th>Name</th><th>Address</th><th>Contact</th><th>Mobile</th><th></th></tr></thead>
+      <tbody>${DB.customers.length? DB.customers.map(c=>`<tr><td class="mono">${c.code}</td><td><b>${escapeHtml(c.name)}</b></td>
+        <td>${escapeHtml(c.address)}</td><td>${escapeHtml(c.contact)}</td><td>${escapeHtml(c.mobile)}</td>
+        <td><button class="icon-btn" onclick="openCustomerForm('${c.id}')">✎ Edit</button></td></tr>`).join('') :
+        `<tr class="empty-row"><td colspan="6">No customers yet.</td></tr>`}</tbody></table></div></div>`;
+}
+function openCustomerForm(id){
+  const c = id ? customerById(id) : null;
+  modal(id?'Edit Customer':'Add Customer', `
+    <div class="field"><label>Customer Name *</label><input id="f_name" value="${c?escapeHtml(c.name):''}"></div>
+    <div class="field"><label>Address</label><textarea id="f_addr" rows="2">${c?escapeHtml(c.address):''}</textarea></div>
+    <div class="field-row">
+      <div class="field"><label>Contact Person</label><input id="f_contact" value="${c?escapeHtml(c.contact):''}"></div>
+      <div class="field"><label>Mobile</label><input id="f_mobile" value="${c?escapeHtml(c.mobile):''}"></div>
+    </div>`,
+    `<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="saveCustomer('${id||''}')">Save</button>`);
+}
+function saveCustomer(id){
+  const name = val('f_name').trim(); if(!name){ showToast('Name required'); return; }
+  const data = {name, address:val('f_addr'), contact:val('f_contact'), mobile:val('f_mobile')};
+  if(id) Object.assign(customerById(id), data); else addCustomerRaw(name,data.address,data.contact,data.mobile);
+  closeModal(); saveDB(); showToast('Customer saved'); renderCustomers(document.getElementById('main'));
+}
+
+/* ================= LOCATIONS ================= */
+function renderLocations(main){
+  main.innerHTML = pageHead('Storage Locations', 'Digital map of the physical store — rack & bin.',
+    `<button class="btn primary" onclick="openLocationForm()">+ Add Location</button>`) +
+    `<div class="grid cards3">` +
+    Object.entries(groupBy(DB.locations,'rack')).map(([rack, bins])=>`
+      <div class="card">
+        <h3 style="font-size:13px;margin-bottom:8px;">${escapeHtml(rack)}</h3>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          ${bins.map(b=>{
+            const count = DB.materials.filter(m=>m.locationId===b.id).length;
+            return `<span class="pill" title="${count} material(s)">${escapeHtml(b.bin)} ${count?`(${count})`:''}</span>`;
+          }).join('')}
+        </div>
+      </div>`).join('') +
+    `</div>` +
+    (DB.locations.length? '' : emptyState('No storage locations defined yet.'));
+}
+function groupBy(arr,key){ const o={}; arr.forEach(x=>{ (o[x[key]]=o[x[key]]||[]).push(x); }); return o; }
+function openLocationForm(){
+  modal('Add Storage Location', `
+    <div class="field-row">
+      <div class="field"><label>Rack *</label><input id="f_rack" placeholder="e.g. Rack A"></div>
+      <div class="field"><label>Bin / Shelf *</label><input id="f_bin" placeholder="e.g. A-04"></div>
+    </div>`,
+    `<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="saveLocation()">Save</button>`);
+}
+function saveLocation(){
+  const rack=val('f_rack').trim(), bin=val('f_bin').trim();
+  if(!rack||!bin){ showToast('Both fields are required'); return; }
+  addLocationRaw(rack,bin); closeModal(); saveDB(); showToast('Location added'); renderLocations(document.getElementById('main'));
+}
+
+/* ================= TAGS ================= */
+function renderTags(main){
+  main.innerHTML = pageHead('Tag Management', 'Per KKI-QMS-06 §Responsibility: Store Incharge issues White, Yellow, Red, Green & Blue tags.') +
+    `<div class="section-note">The manual lists these five tag colours without fixing exact meanings — the definitions below are configurable defaults for your review. Materials tagged <b>Red</b> are automatically blocked from Issue and Outward.</div>
+    <div class="grid cards2">
+    ${DB.tagDefs.map(t=>`<div class="card"><div class="tag ${t.code}" style="margin-bottom:8px;"><span class="dot ${t.code}"></span>${t.label}</div>
+      <div class="muted" style="font-size:12.5px;">${t.desc}</div></div>`).join('')}
+    </div>
+    <div class="panel" style="margin-top:16px;">
+      <div class="panel-head"><h3>Batches by Tag</h3></div>
+      <div class="panel-body" style="padding:0;">
+        <table><thead><tr><th>Identification No.</th><th>Material</th><th>Tag</th><th class="num">Qty Remaining</th><th>Received</th></tr></thead>
+        <tbody>${DB.batches.length? DB.batches.slice().reverse().map(b=>`<tr>
+          <td><span class="ident-badge">${b.identNo}</span></td><td>${escapeHtml(materialById(b.materialId)?.name||'')}</td>
+          <td>${tagPill(b.tag)}</td><td class="num">${b.qtyRemaining}</td><td>${fmtDate(b.receivedDate)}</td></tr>`).join('') :
+          `<tr class="empty-row"><td colspan="5">No batches yet.</td></tr>`}</tbody></table>
+      </div>
+    </div>`;
+}
+
+/* ================= INWARD ================= */
+function renderInwardNew(main){
+  const matOpts = optionsFor(DB.materials,'id',m=>`${m.name} (${m.code})`);
+  main.innerHTML = pageHead('New Material Inward', 'Material inward → document verification → inspection → GRN → identification → storage.') + `
+    <div class="panel"><div class="panel-body">
+      <div class="field"><label>Source Type *</label>
+        <div class="radio-group">
+          <label><input type="radio" name="src" value="S" checked onchange="toggleInwardSource()"> Supplier Material</label>
+          <label><input type="radio" name="src" value="C" onchange="toggleInwardSource()"> Customer Material</label>
+        </div>
+      </div>
+      <div class="field" id="supField"><label>Supplier *</label><select id="in_supplier">${optionsFor(DB.suppliers,'id',s=>s.name)}</select></div>
+      <div class="field" id="cusField" style="display:none;"><label>Customer *</label><select id="in_customer">${optionsFor(DB.customers,'id',c=>c.name)}</select></div>
+      <div class="field-row">
+        <div class="field"><label>Purchase Order No.</label><input id="in_po" placeholder="PO-XXXX"></div>
+        <div class="field"><label>Challan No. *</label><input id="in_challan" placeholder="CH-XXXX"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Challan Date *</label><input id="in_date" type="date" value="${todayISO()}"></div>
+        <div class="field"><label>Material *</label><select id="in_material" onchange="onInwardMaterialChange()">${matOpts}</select></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Quantity *</label><input id="in_qty" type="number" min="0"></div>
+        <div class="field"><label>Storage Location</label><select id="in_loc">${optionsFor(DB.locations,'id',l=>l.rack+' / '+l.bin)}</select></div>
+      </div>
+      <div class="field" id="in_expiryField" style="display:none;"><label>Expiry Date (auto from shelf life — adjust if needed)</label><input id="in_expiry" type="date"></div>
+      <div class="field"><label>Inspection Status *</label>
+        <div class="radio-group">
+          <label><input type="radio" name="insp" value="Accepted" checked> Accepted</label>
+          <label><input type="radio" name="insp" value="Pending Inspection"> Pending Inspection</label>
+          <label><input type="radio" name="insp" value="Rejected"> Rejected</label>
+        </div>
+      </div>
+      <div class="field"><label>Remarks</label><textarea id="in_remarks" rows="2"></textarea></div>
+      <button class="btn primary" onclick="submitInward()">Save Inward &amp; Generate GRN</button>
+    </div></div>`;
+  onInwardMaterialChange();
+}
+function toggleInwardSource(){
+  const s = document.querySelector('input[name=src]:checked').value;
+  document.getElementById('supField').style.display = s==='S' ? '' : 'none';
+  document.getElementById('cusField').style.display = s==='C' ? '' : 'none';
+}
+function onInwardMaterialChange(){
+  const mat = materialById(val('in_material'));
+  const show = mat && mat.expiryApplicable;
+  document.getElementById('in_expiryField').style.display = show ? '' : 'none';
+  if(show && mat.shelfLifeDays>0){
+    const d = new Date(); d.setDate(d.getDate()+mat.shelfLifeDays);
+    document.getElementById('in_expiry').value = d.toISOString().slice(0,10);
+  }
+  if(mat && mat.locationId) document.getElementById('in_loc').value = mat.locationId;
+}
+function submitInward(){
+  const sourceType = document.querySelector('input[name=src]:checked').value;
+  const materialId = val('in_material');
+  const qty = +val('in_qty');
+  const challan = val('in_challan').trim();
+  if(!materialId){ showToast('Select a material'); return; }
+  if(!qty || qty<=0){ showToast('Enter a valid quantity'); return; }
+  if(!challan){ showToast('Challan No. is required'); return; }
+  if(sourceType==='S' && !val('in_supplier')){ showToast('Select a supplier'); return; }
+  if(sourceType==='C' && !val('in_customer')){ showToast('Select a customer'); return; }
+  const batch = doInward({
+    materialId, sourceType, supplierId: val('in_supplier'), customerId: val('in_customer'),
+    poNo: val('in_po'), challanNo: challan, challanDate: val('in_date')||todayISO(),
+    qty, locationId: val('in_loc'), inspectionStatus: document.querySelector('input[name=insp]:checked').value,
+    remarks: val('in_remarks'), expiryDate: val('in_expiry')
+  });
+  saveDB();
+  showInwardConfirmation(batch);
+}
+function showInwardConfirmation(batch){
+  const mat = materialById(batch.materialId);
+  modal('Inward Saved', `
+    <div class="kv">
+      <div class="k">Identification No.</div><div class="v"><span class="ident-badge">${batch.identNo}</span></div>
+      <div class="k">GRN No.</div><div class="v">${batch.grnNo}</div>
+      <div class="k">Material</div><div class="v">${escapeHtml(mat.name)}</div>
+      <div class="k">Quantity</div><div class="v">${batch.qtyReceived} ${mat.unit}</div>
+      <div class="k">Status</div><div class="v">${tagPill(batch.tag)}</div>
+    </div>
+    <div class="section-note" style="margin-top:14px;">Stock, storage location and batch record have been created automatically.</div>
+  `, `<button class="btn ghost" onclick="closeModal();navigate('inward-new')">New Inward</button>
+      <button class="btn primary" onclick="closeModal();navigate('inward-register')">View Inward Register</button>`);
+}
+function renderInwardRegister(main){
+  main.innerHTML = pageHead('Inward Material Register', 'Format No. KKI/STR/REC/04 — auto-generated.',
+    `<button class="btn ghost" onclick="exportCSV(inwardCSVRows(),'Inward_Register.csv')">⬇ Export CSV</button>`) +
+    `<div class="panel"><div class="panel-body" style="padding:0;"><table><thead><tr>
+      <th>Date</th><th>Inward No.</th><th>Ident. No.</th><th>Party</th><th>Challan No.</th><th>Material</th>
+      <th class="num">Qty</th><th>Status</th></tr></thead><tbody>
+      ${DB.batches.length? DB.batches.slice().reverse().map(b=>{
+        const party = b.sourceType==='S' ? supplierById(b.supplierId)?.name : customerById(b.customerId)?.name;
+        return `<tr><td>${fmtDate(b.receivedDate)}</td><td class="mono">${b.inwardNo}</td>
+          <td><span class="ident-badge">${b.identNo}</span></td><td>${escapeHtml(party||'—')}</td>
+          <td>${escapeHtml(b.challanNo)}</td><td>${escapeHtml(materialById(b.materialId)?.name||'')}</td>
+          <td class="num">${b.qtyReceived}</td><td>${tagPill(b.tag)}</td></tr>`;
+      }).join('') : `<tr class="empty-row"><td colspan="8">No inward records yet.</td></tr>`}
+      </tbody></table></div></div>`;
+}
+function inwardCSVRows(){
+  return [['Date','Inward No','Identification No','Party','Challan No','Material','Qty','Status'],
+    ...DB.batches.map(b=>[b.receivedDate,b.inwardNo,b.identNo,(b.sourceType==='S'?supplierById(b.supplierId)?.name:customerById(b.customerId)?.name)||'',b.challanNo,materialById(b.materialId)?.name||'',b.qtyReceived,b.tag])];
+}
+
+/* ================= STOCK ================= */
+function renderStock(main){
+  main.innerHTML = pageHead('Current Stock', 'Live stock levels — click a material to view its batch-wise stock card & FIFO order.') +
+    `<div class="search-bar"><input id="stockSearch" placeholder="Search material…" oninput="renderStockTable()"></div>
+     <div class="panel"><div class="panel-body" style="padding:0;"><table id="stockTable"></table></div></div>`;
+  renderStockTable();
+}
+function renderStockTable(){
+  const q = (val('stockSearch')||'').toLowerCase();
+  const rows = DB.materials.filter(m=> !q || m.name.toLowerCase().includes(q));
+  document.getElementById('stockTable').innerHTML = `
+    <thead><tr><th>Material</th><th>Location</th><th class="num">Current Stock</th><th class="num">Min</th>
+      <th class="num">Reorder</th><th class="num">Max</th><th>Batches</th><th></th></tr></thead>
+    <tbody>${rows.length? rows.map(m=>{
+      const stock = currentStock(m.id); const loc = locationById(m.locationId);
+      const nBatches = DB.batches.filter(b=>b.materialId===m.id && b.qtyRemaining>0).length;
+      return `<tr><td><b>${escapeHtml(m.name)}</b><div class="muted mono" style="font-size:11px;">${m.code}</div></td>
+        <td>${loc?loc.rack+' / '+loc.bin:'—'}</td>
+        <td class="num" style="font-weight:700;${stock<m.reorderLevel?'color:var(--danger)':''}">${stock} ${m.unit}</td>
+        <td class="num muted">${m.minStock}</td><td class="num muted">${m.reorderLevel}</td><td class="num muted">${m.maxStock}</td>
+        <td>${nBatches}</td><td><button class="link-btn" onclick="openStockCard('${m.id}')">View Stock Card</button></td></tr>`;
+    }).join('') : `<tr class="empty-row"><td colspan="8">No materials.</td></tr>`}</tbody>`;
+}
+function openStockCard(materialId){
+  const m = materialById(materialId);
+  const batches = DB.batches.filter(b=>b.materialId===materialId).sort((a,b)=>new Date(a.receivedDate)-new Date(b.receivedDate));
+  const loc = locationById(m.locationId);
+  modal(`Stock Card — ${escapeHtml(m.name)}`, `
+    <div class="kv" style="margin-bottom:14px;">
+      <div class="k">Current Stock</div><div class="v">${currentStock(m.id)} ${m.unit}</div>
+      <div class="k">Location</div><div class="v">${loc?loc.rack+' / '+loc.bin:'—'}</div>
+      <div class="k">Reorder Level</div><div class="v">${m.reorderLevel}</div>
+      <div class="k">FIFO Order</div><div class="v">${m.fifoApplicable?'Applicable':'Not applicable'}</div>
+    </div>
+    <table><thead><tr><th>Ident. No.</th><th>Received</th><th class="num">Received Qty</th><th class="num">Remaining</th><th>Tag</th><th>Expiry</th></tr></thead>
+    <tbody>${batches.length? batches.map(b=>`<tr><td><span class="ident-badge">${b.identNo}</span></td><td>${fmtDate(b.receivedDate)}</td>
+      <td class="num">${b.qtyReceived}</td><td class="num">${b.qtyRemaining}</td><td>${tagPill(b.tag)}</td>
+      <td>${b.expiryDate?fmtDate(b.expiryDate):'—'}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="6">No batches.</td></tr>`}</tbody></table>
+  `, `<button class="btn ghost" onclick="closeModal()">Close</button>`);
+}
+
+/* ================= STOCK REGISTER ================= */
+function renderStockRegister(main){
+  const matOpts = `<option value="">All materials</option>` + optionsFor(DB.materials,'id',m=>m.name);
+  main.innerHTML = pageHead('Stock Register', 'Format No. KKI/STR/REC/01 — every movement recorded automatically.',
+    `<button class="btn ghost" onclick="exportCSV(stockRegisterCSV(),'Stock_Register.csv')">⬇ Export CSV</button>`) +
+    `<div class="search-bar"><select class="filter" id="srMaterial" onchange="renderStockRegisterTable()">${matOpts}</select></div>
+     <div class="panel"><div class="panel-body" style="padding:0;"><table id="srTable"></table></div></div>`;
+  renderStockRegisterTable();
+}
+function renderStockRegisterTable(){
+  const matId = val('srMaterial');
+  const rows = DB.transactions.filter(t=> !matId || t.materialId===matId).slice().reverse();
+  document.getElementById('srTable').innerHTML = `
+    <thead><tr><th>Date</th><th>Material</th><th>Type</th><th>Reference</th><th class="num">In</th><th class="num">Out</th><th class="num">Balance</th></tr></thead>
+    <tbody>${rows.length? rows.map(t=>`<tr><td>${fmtDate(t.date)}</td><td>${escapeHtml(materialById(t.materialId)?.name||'')}</td>
+      <td><span class="pill">${t.type}</span></td><td class="mono">${t.ref}</td>
+      <td class="num" style="color:var(--good);">${t.qtyIn||''}</td><td class="num" style="color:var(--danger);">${t.qtyOut||''}</td>
+      <td class="num" style="font-weight:700;">${t.balanceAfter}</td></tr>`).join('') :
+      `<tr class="empty-row"><td colspan="7">No transactions yet.</td></tr>`}</tbody>`;
+}
+function stockRegisterCSV(){
+  return [['Date','Material','Type','Reference','In','Out','Balance'],
+    ...DB.transactions.map(t=>[t.date, materialById(t.materialId)?.name||'', t.type, t.ref, t.qtyIn||0, t.qtyOut||0, t.balanceAfter])];
+}
+
+/* ================= EXPIRY ================= */
+function renderExpiry(main){
+  const withExp = DB.batches.filter(b=>b.expiryDate && b.qtyRemaining>0);
+  const expired = withExp.filter(b=>daysBetween(todayISO(),b.expiryDate)<0);
+  const d7 = withExp.filter(b=>{const d=daysBetween(todayISO(),b.expiryDate); return d>=0 && d<=7;});
+  const d30 = withExp.filter(b=>{const d=daysBetween(todayISO(),b.expiryDate); return d>7 && d<=30;});
+  main.innerHTML = pageHead('Expiry / Shelf-life Management', 'Per KKI-QMS-06: Store Incharge assigns and controls expiration dates.') +
+    `<div class="grid cards3" style="margin-bottom:16px;">
+      <div class="card stat"><div class="label">Expired</div><div class="value danger">${expired.length}</div></div>
+      <div class="card stat"><div class="label">Expires in 7 Days</div><div class="value warn">${d7.length}</div></div>
+      <div class="card stat"><div class="label">Expires in 30 Days</div><div class="value">${d30.length}</div></div>
+    </div>
+    <div class="panel"><div class="panel-body" style="padding:0;">
+      <table><thead><tr><th>Ident. No.</th><th>Material</th><th class="num">Qty Remaining</th><th>Expiry Date</th><th>Days Left</th><th>Status</th></tr></thead>
+      <tbody>${withExp.length? withExp.sort((a,b)=>new Date(a.expiryDate)-new Date(b.expiryDate)).map(b=>{
+        const d = daysBetween(todayISO(), b.expiryDate);
+        const status = d<0 ? `<span class="pill rejected">Expired</span>` : d<=7 ? `<span class="pill pending">≤ 7 days</span>` : d<=30 ? `<span class="pill approved">≤ 30 days</span>` : `<span class="pill issued">OK</span>`;
+        return `<tr><td><span class="ident-badge">${b.identNo}</span></td><td>${escapeHtml(materialById(b.materialId)?.name||'')}</td>
+          <td class="num">${b.qtyRemaining}</td><td>${fmtDate(b.expiryDate)}</td><td>${d<0?'Expired':d+' days'}</td><td>${status}</td></tr>`;
+      }).join('') : `<tr class="empty-row"><td colspan="6">No shelf-life-tracked batches in stock.</td></tr>`}</tbody></table>
+    </div></div>`;
+}
+
+/* ================= REORDER ================= */
+function renderReorder(main){
+  const low = DB.materials.filter(m=>currentStock(m.id) < m.reorderLevel);
+  main.innerHTML = pageHead('Reorder Alerts', 'Materials below reorder level — Store Incharge should inform Purchase Dept.') +
+    `<div class="panel"><div class="panel-body" style="padding:0;">
+      <table><thead><tr><th>Material</th><th>Supplier</th><th class="num">Current Stock</th><th class="num">Reorder Level</th><th class="num">Suggested Order</th></tr></thead>
+      <tbody>${low.length? low.map(m=>{
+        const stock = currentStock(m.id); const sug = Math.max(m.maxStock - stock, m.reorderLevel);
+        return `<tr><td><b>${escapeHtml(m.name)}</b></td><td>${escapeHtml(supplierById(m.supplierId)?.name||'—')}</td>
+          <td class="num" style="color:var(--danger);font-weight:700;">${stock} ${m.unit}</td>
+          <td class="num">${m.reorderLevel}</td><td class="num">${sug} ${m.unit}</td></tr>`;
+      }).join('') : `<tr class="empty-row"><td colspan="5">✓ All materials are above their reorder level.</td></tr>`}</tbody></table>
+    </div></div>`;
+}
+
+/* ================= REQUISITIONS ================= */
+function renderRequisitionNew(main){
+  main.innerHTML = pageHead('New Material Requisition', 'Format No. KKI/STR/REC/02 — submitted by Production, actioned by Store Incharge.') + `
+    <div class="panel"><div class="panel-body">
+      <div class="field-row">
+        <div class="field"><label>Department</label><input id="rq_dept" value="Production"></div>
+        <div class="field"><label>Job No.</label><input id="rq_job" placeholder="JOB-2026-XXXX"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Requested By</label><input id="rq_by" placeholder="Name"></div>
+        <div class="field"><label>Required Date</label><input id="rq_date" type="date" value="${todayISO()}"></div>
+      </div>
+      <div class="field"><label>Purpose</label><input id="rq_purpose" placeholder="e.g. Job order production"></div>
+      <label style="font-size:12px;font-weight:600;color:var(--ink-soft);">Materials</label>
+      <div class="item-rows" id="rqItems"></div>
+      <button class="btn ghost sm" onclick="addRqRow()">+ Add material line</button>
+      <div style="margin-top:16px;"><button class="btn primary" onclick="submitRequisition()">Submit Requisition</button></div>
+    </div></div>`;
+  document.getElementById('rqItems').innerHTML='';
+  addRqRow();
+}
+function addRqRow(){
+  const wrap = document.getElementById('rqItems');
+  const row = document.createElement('div'); row.className='irow';
+  row.innerHTML = `<select class="rq-mat">${optionsFor(DB.materials,'id',m=>m.name)}</select>
+    <input class="rq-qty" type="number" min="0" placeholder="Qty">
+    <span class="muted rq-unit" style="font-size:12px;">${DB.materials[0]?DB.materials[0].unit:''}</span>
+    <button class="rm-row" onclick="this.parentElement.remove()">&times;</button>`;
+  row.querySelector('.rq-mat').addEventListener('change', e=>{
+    row.querySelector('.rq-unit').textContent = materialById(e.target.value)?.unit||'';
+  });
+  wrap.appendChild(row);
+}
+function submitRequisition(){
+  const rows = [...document.querySelectorAll('#rqItems .irow')];
+  const items = rows.map(r=>({materialId:r.querySelector('.rq-mat').value, qty:+r.querySelector('.rq-qty').value}))
+    .filter(i=>i.materialId && i.qty>0);
+  if(!items.length){ showToast('Add at least one material with quantity'); return; }
+  DB.seq.req++;
+  const rec = { id:'req_'+DB.seq.req, reqNo: uid('MR', DB.seq.req), department: val('rq_dept'), jobNo: val('rq_job'),
+    requestedBy: val('rq_by'), requiredDate: val('rq_date'), purpose: val('rq_purpose'), items, status:'Pending', date: todayISO() };
+  DB.requisitions.push(rec); saveDB();
+  showToast(`Requisition ${rec.reqNo} submitted`);
+  navigate('requisitions');
+}
+function renderRequisitions(main){
+  main.innerHTML = pageHead('Material Requisitions', 'Pending, approved and issued production requests.') +
+    `<div class="panel"><div class="panel-body" style="padding:0;"><table><thead><tr>
+      <th>Req. No.</th><th>Date</th><th>Department</th><th>Job No.</th><th>Items</th><th>Status</th><th></th></tr></thead>
+      <tbody>${DB.requisitions.length? DB.requisitions.slice().reverse().map(r=>`<tr>
+        <td class="mono">${r.reqNo}</td><td>${fmtDate(r.date)}</td><td>${escapeHtml(r.department)}</td><td>${escapeHtml(r.jobNo||'—')}</td>
+        <td>${r.items.map(i=>escapeHtml(materialById(i.materialId)?.name||'')+' ('+i.qty+')').join(', ')}</td>
+        <td><span class="pill ${r.status.toLowerCase()}">${r.status}</span></td>
+        <td>${r.status==='Pending' ? `<button class="link-btn" onclick="openIssueForRequisition('${r.id}')">Issue →</button>` : '—'}</td>
+        </tr>`).join('') : `<tr class="empty-row"><td colspan="7">No requisitions yet. <span class="link-btn" onclick="navigate('requisition-new')">Create one</span></td></tr>`}</tbody></table>
+    </div></div>`;
+}
+function openIssueForRequisition(reqId){
+  const r = DB.requisitions.find(x=>x.id===reqId);
+  let rows = r.items.map(it=>{
+    const m = materialById(it.materialId); const {plan, shortfall} = fifoAllocate(it.materialId, it.qty);
+    return `<tr><td>${escapeHtml(m.name)}</td><td class="num">${it.qty} ${m.unit}</td>
+      <td class="num">${currentStock(it.materialId)} ${m.unit}</td>
+      <td>${plan.map(p=>`<span class="ident-badge" style="margin-right:4px;">${p.identNo}</span>×${p.qty}`).join(' ')}${shortfall>0?` <span style="color:var(--danger);font-weight:700;">Short by ${shortfall}</span>`:''}</td></tr>`;
+  }).join('');
+  modal(`Issue Material — ${r.reqNo}`, `
+    <div class="kv" style="margin-bottom:12px;"><div class="k">Department</div><div class="v">${escapeHtml(r.department)}</div>
+      <div class="k">Job No.</div><div class="v">${escapeHtml(r.jobNo||'—')}</div></div>
+    <table><thead><tr><th>Material</th><th class="num">Requested</th><th class="num">Available</th><th>FIFO Allocation</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    <div class="field" style="margin-top:14px;"><label>Issued By</label><input id="iss_by" value="Store Incharge"></div>
+  `, `<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="confirmIssue('${reqId}')">Confirm Issue</button>`);
+}
+function confirmIssue(reqId){
+  const r = DB.requisitions.find(x=>x.id===reqId);
+  const rec = doIssue({ requisitionId:reqId, items: r.items, issuedBy: val('iss_by'), date: todayISO() });
+  saveDB(); closeModal();
+  showToast(`Issued — ${rec.issueNo}`);
+  navigate('issues');
+}
+function renderIssues(main){
+  main.innerHTML = pageHead('Material Issue Register', 'Format No. KKI/STR/REC/03 — auto-generated with FIFO batch trace.',
+    `<button class="btn ghost" onclick="exportCSV(issuesCSV(),'Issue_Register.csv')">⬇ Export CSV</button>`) +
+    `<div class="panel"><div class="panel-body" style="padding:0;"><table><thead><tr>
+      <th>Issue No.</th><th>Date</th><th>Issued By</th><th>Items (Batch × Qty)</th></tr></thead>
+      <tbody>${DB.issues.length? DB.issues.slice().reverse().map(i=>`<tr><td class="mono">${i.issueNo}</td><td>${fmtDate(i.date)}</td>
+        <td>${escapeHtml(i.issuedBy)}</td><td>${i.items.map(it=>`${escapeHtml(materialById(it.materialId)?.name||'')} — <span class="ident-badge">${it.identNo}</span> × ${it.qty}`).join('<br>')}</td></tr>`).join('') :
+        `<tr class="empty-row"><td colspan="4">No issues yet.</td></tr>`}</tbody></table></div></div>`;
+}
+function issuesCSV(){
+  const rows=[['Issue No','Date','Issued By','Material','Identification No','Qty']];
+  DB.issues.forEach(i=>i.items.forEach(it=>rows.push([i.issueNo,i.date,i.issuedBy,materialById(it.materialId)?.name||'',it.identNo,it.qty])));
+  return rows;
+}
+
+/* ================= OUTWARD ================= */
+function renderOutwardNew(main){
+  main.innerHTML = pageHead('New Outward / Dispatch', 'Format No. KKI/STR/REC/05 — creates Delivery Challan automatically.') + `
+    <div class="panel"><div class="panel-body">
+      <div class="field-row">
+        <div class="field"><label>Customer *</label><select id="ow_customer">${optionsFor(DB.customers,'id',c=>c.name)}</select></div>
+        <div class="field"><label>Date</label><input id="ow_date" type="date" value="${todayISO()}"></div>
+      </div>
+      <div class="field-row3">
+        <div class="field"><label>Vehicle No.</label><input id="ow_vehicle"></div>
+        <div class="field"><label>Driver</label><input id="ow_driver"></div>
+        <div class="field"><label>Destination</label><input id="ow_dest"></div>
+      </div>
+      <label style="font-size:12px;font-weight:600;color:var(--ink-soft);">Materials</label>
+      <div class="item-rows" id="owItems"></div>
+      <button class="btn ghost sm" onclick="addOwRow()">+ Add material line</button>
+      <div class="field" style="margin-top:12px;"><label>Remarks</label><textarea id="ow_remarks" rows="2"></textarea></div>
+      <button class="btn primary" onclick="submitOutward()">Create Outward &amp; Delivery Challan</button>
+    </div></div>`;
+  document.getElementById('owItems').innerHTML=''; addOwRow();
+}
+function addOwRow(){
+  const wrap = document.getElementById('owItems');
+  const row = document.createElement('div'); row.className='irow';
+  row.innerHTML = `<select class="ow-mat">${optionsFor(DB.materials,'id',m=>m.name)}</select>
+    <input class="ow-qty" type="number" min="0" placeholder="Qty">
+    <span class="muted ow-unit" style="font-size:12px;">${DB.materials[0]?DB.materials[0].unit:''}</span>
+    <button class="rm-row" onclick="this.parentElement.remove()">&times;</button>`;
+  row.querySelector('.ow-mat').addEventListener('change', e=>{ row.querySelector('.ow-unit').textContent = materialById(e.target.value)?.unit||''; });
+  wrap.appendChild(row);
+}
+function submitOutward(){
+  if(!val('ow_customer')){ showToast('Select a customer'); return; }
+  const rows = [...document.querySelectorAll('#owItems .irow')];
+  const items = rows.map(r=>({materialId:r.querySelector('.ow-mat').value, qty:+r.querySelector('.ow-qty').value})).filter(i=>i.materialId&&i.qty>0);
+  if(!items.length){ showToast('Add at least one material with quantity'); return; }
+  const rec = doOutward({ customerId: val('ow_customer'), date: val('ow_date'), vehicle: val('ow_vehicle'), driver: val('ow_driver'),
+    destination: val('ow_dest'), remarks: val('ow_remarks'), items });
+  saveDB();
+  openDeliveryChallan(rec.id);
+}
+function renderOutwardRegister(main){
+  main.innerHTML = pageHead('Outward Material Register', 'Format No. KKI/STR/REC/05.',
+    `<button class="btn ghost" onclick="exportCSV(outwardCSV(),'Outward_Register.csv')">⬇ Export CSV</button>`) +
+    `<div class="panel"><div class="panel-body" style="padding:0;"><table><thead><tr>
+      <th>DC No.</th><th>Date</th><th>Customer</th><th>Items</th><th></th></tr></thead>
+      <tbody>${DB.outwards.length? DB.outwards.slice().reverse().map(o=>`<tr><td class="mono">${o.dcNo}</td><td>${fmtDate(o.date)}</td>
+        <td>${escapeHtml(customerById(o.customerId)?.name||'')}</td>
+        <td>${o.items.map(it=>escapeHtml(materialById(it.materialId)?.name||'')+' × '+it.qty).join(', ')}</td>
+        <td><button class="link-btn" onclick="openDeliveryChallan('${o.id}')">View DC</button></td></tr>`).join('') :
+        `<tr class="empty-row"><td colspan="5">No outward records yet.</td></tr>`}</tbody></table></div></div>`;
+}
+function outwardCSV(){
+  const rows=[['DC No','Date','Customer','Material','Identification No','Qty']];
+  DB.outwards.forEach(o=>o.items.forEach(it=>rows.push([o.dcNo,o.date,customerById(o.customerId)?.name||'',materialById(it.materialId)?.name||'',it.identNo,it.qty])));
+  return rows;
+}
+function openDeliveryChallan(id){
+  const o = DB.outwards.find(x=>x.id===id); const cus = customerById(o.customerId);
+  modal('Delivery Challan', `
+    <div style="text-align:center;margin-bottom:14px;">
+      <div style="font-family:'IBM Plex Sans';font-weight:700;font-size:16px;">${escapeHtml(DB.settings.companyName)}</div>
+      <div style="font-size:11px;color:var(--ink-faint);letter-spacing:.1em;">DELIVERY CHALLAN</div>
+    </div>
+    <div class="kv" style="margin-bottom:12px;">
+      <div class="k">Challan No.</div><div class="v mono">${o.dcNo}</div>
+      <div class="k">Date</div><div class="v">${fmtDate(o.date)}</div>
+      <div class="k">Customer</div><div class="v">${escapeHtml(cus?cus.name:'')}</div>
+      <div class="k">Address</div><div class="v">${escapeHtml(cus?cus.address:'')}</div>
+      <div class="k">Vehicle</div><div class="v">${escapeHtml(o.vehicle||'—')}</div>
+      <div class="k">Driver</div><div class="v">${escapeHtml(o.driver||'—')}</div>
+      <div class="k">Destination</div><div class="v">${escapeHtml(o.destination||'—')}</div>
+    </div>
+    <table><thead><tr><th>Material</th><th>Identification No.</th><th class="num">Qty</th></tr></thead>
+      <tbody>${o.items.map(it=>`<tr><td>${escapeHtml(materialById(it.materialId)?.name||'')}</td><td><span class="ident-badge">${it.identNo}</span></td><td class="num">${it.qty}</td></tr>`).join('')}</tbody></table>
+    ${o.remarks?`<div style="margin-top:10px;font-size:12.5px;"><b>Remarks:</b> ${escapeHtml(o.remarks)}</div>`:''}
+    <div style="margin-top:24px;font-size:12px;color:var(--ink-faint);">Prepared by: Store Incharge</div>
+  `, `<button class="btn ghost" onclick="closeModal()">Close</button><button class="btn primary" onclick="window.print()">🖨 Print</button>`);
+}
+
+/* ================= SCRAP ================= */
+function renderScrapNew(main){
+  main.innerHTML = pageHead('New Scrap Entry', 'Digital replacement for the physical scrap register.') + `
+    <div class="panel"><div class="panel-body">
+      <div class="field-row">
+        <div class="field"><label>Material *</label><select id="sc_mat" onchange="onScrapMaterialChange()">${optionsFor(DB.materials,'id',m=>m.name)}</select></div>
+        <div class="field"><label>Batch (Identification No.)</label><select id="sc_batch"></select></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Quantity *</label><input id="sc_qty" type="number" min="0"></div>
+        <div class="field"><label>Date</label><input id="sc_date" type="date" value="${todayISO()}"></div>
+      </div>
+      <div class="field"><label>Reason *</label>
+        <select id="sc_reason"><option>Damage</option><option>Production Waste</option><option>Expired</option><option>Rejected</option><option>Other</option></select>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Source Department</label><input id="sc_dept" value="Production"></div>
+        <div class="field"><label>Approved By</label><input id="sc_appr"></div>
+      </div>
+      <div class="field"><label>Disposal Method</label><input id="sc_disp" placeholder="e.g. Sold to scrap vendor"></div>
+      <button class="btn primary" onclick="submitScrap()">Save Scrap Entry</button>
+    </div></div>`;
+  onScrapMaterialChange();
+}
+function onScrapMaterialChange(){
+  const matId = val('sc_mat');
+  const batches = DB.batches.filter(b=>b.materialId===matId && b.qtyRemaining>0);
+  document.getElementById('sc_batch').innerHTML = `<option value="">— No specific batch —</option>` +
+    batches.map(b=>`<option value="${b.id}">${b.identNo} (rem. ${b.qtyRemaining})</option>`).join('');
+}
+function submitScrap(){
+  const materialId = val('sc_mat'); const qty=+val('sc_qty');
+  if(!materialId){ showToast('Select a material'); return; }
+  if(!qty||qty<=0){ showToast('Enter a valid quantity'); return; }
+  const rec = doScrap({ materialId, batchId: val('sc_batch')||null, qty, date: val('sc_date'), reason: val('sc_reason'),
+    department: val('sc_dept'), approvedBy: val('sc_appr'), disposalMethod: val('sc_disp') });
+  saveDB(); showToast(`Scrap entry saved — ${rec.scrapNo}`); navigate('scrap-register');
+}
+function renderScrapRegister(main){
+  const monthly = {};
+  DB.scraps.forEach(s=>{ const mat=materialById(s.materialId); const cat = mat?mat.category:'Other'; monthly[cat]=(monthly[cat]||0)+s.qty; });
+  main.innerHTML = pageHead('Scrap Register', 'All scrap entries with reason & disposal method.',
+    `<button class="btn ghost" onclick="exportCSV(scrapCSV(),'Scrap_Register.csv')">⬇ Export CSV</button>`) +
+    `<div class="grid cards3" style="margin-bottom:16px;">${Object.entries(monthly).length? Object.entries(monthly).map(([k,v])=>
+      `<div class="card stat"><div class="label">${escapeHtml(k)}</div><div class="value">${v}</div></div>`).join('') :
+      `<div class="muted">No scrap recorded yet.</div>`}</div>
+    <div class="panel"><div class="panel-body" style="padding:0;"><table><thead><tr>
+      <th>Scrap No.</th><th>Date</th><th>Material</th><th>Batch</th><th class="num">Qty</th><th>Reason</th><th>Dept.</th></tr></thead>
+      <tbody>${DB.scraps.length? DB.scraps.slice().reverse().map(s=>`<tr><td class="mono">${s.scrapNo}</td><td>${fmtDate(s.date)}</td>
+        <td>${escapeHtml(materialById(s.materialId)?.name||'')}</td><td>${s.identNo!=='—'?`<span class="ident-badge">${s.identNo}</span>`:'—'}</td>
+        <td class="num">${s.qty}</td><td>${escapeHtml(s.reason)}</td><td>${escapeHtml(s.department)}</td></tr>`).join('') :
+        `<tr class="empty-row"><td colspan="7">No scrap entries yet.</td></tr>`}</tbody></table></div></div>`;
+}
+function scrapCSV(){
+  return [['Scrap No','Date','Material','Identification No','Qty','Reason','Department','Approved By','Disposal Method'],
+    ...DB.scraps.map(s=>[s.scrapNo,s.date,materialById(s.materialId)?.name||'',s.identNo,s.qty,s.reason,s.department,s.approvedBy,s.disposalMethod])];
+}
+
+/* ================= STOCK AUDIT ================= */
+function renderAudit(main){
+  main.innerHTML = pageHead('Monthly Stock Audit', 'Per KKI-QMS-06: stock auditing once a month, differences feed into CAPA.',
+    `<button class="btn primary" onclick="openAuditForm()">+ New Audit</button>`) +
+    `<div class="panel"><div class="panel-body" style="padding:0;">
+      <table><thead><tr><th>Audit Date</th><th class="num">Materials Checked</th><th class="num">Differences Found</th><th></th></tr></thead>
+      <tbody>${DB.audits.length? DB.audits.slice().reverse().map(a=>`<tr><td>${fmtDate(a.date)}</td>
+        <td class="num">${a.items.length}</td><td class="num" style="${a.items.filter(i=>i.difference!==0).length?'color:var(--danger);font-weight:700;':''}">${a.items.filter(i=>i.difference!==0).length}</td>
+        <td><button class="link-btn" onclick="openAuditDetail('${a.id}')">View</button></td></tr>`).join('') :
+        `<tr class="empty-row"><td colspan="4">No audits recorded yet.</td></tr>`}</tbody></table>
+    </div></div>`;
+}
+function openAuditForm(){
+  modal('New Monthly Stock Audit', `
+    <div class="field"><label>Audit Date</label><input id="au_date" type="date" value="${todayISO()}"></div>
+    <div class="item-rows" id="auItems">
+      ${DB.materials.map(m=>`<div class="irow" style="grid-template-columns:2fr 1fr 1fr 1fr;">
+        <div>${escapeHtml(m.name)}<div class="muted" style="font-size:11px;">System: ${currentStock(m.id)} ${m.unit}</div></div>
+        <input type="hidden" class="au-mat" value="${m.id}">
+        <input class="au-phys" type="number" placeholder="Physical qty" value="${currentStock(m.id)}">
+        <input class="au-reason" placeholder="Reason (if diff.)">
+        <span></span>
+      </div>`).join('')}
+    </div>
+  `, `<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="submitAudit()">Save Audit</button>`);
+}
+function submitAudit(){
+  const rows = [...document.querySelectorAll('#auItems .irow')];
+  const items = rows.map(r=>{
+    const materialId = r.querySelector('.au-mat').value;
+    const physicalQty = +r.querySelector('.au-phys').value || 0;
+    const systemQty = currentStock(materialId);
+    return { materialId, systemQty, physicalQty, difference: physicalQty-systemQty, reason: r.querySelector('.au-reason').value, action: physicalQty!==systemQty ? 'Pending corrective action' : '—' };
+  });
+  DB.seq.audit++;
+  DB.audits.push({ id:'aud_'+DB.seq.audit, date: val('au_date')||todayISO(), items });
+  saveDB(); closeModal(); showToast('Stock audit saved'); navigate('audit');
+}
+function openAuditDetail(id){
+  const a = DB.audits.find(x=>x.id===id);
+  modal(`Stock Audit — ${fmtDate(a.date)}`, `
+    <table><thead><tr><th>Material</th><th class="num">System</th><th class="num">Physical</th><th class="num">Difference</th><th>Reason</th></tr></thead>
+    <tbody>${a.items.map(i=>`<tr><td>${escapeHtml(materialById(i.materialId)?.name||'')}</td><td class="num">${i.systemQty}</td>
+      <td class="num">${i.physicalQty}</td><td class="num" style="${i.difference!==0?'color:var(--danger);font-weight:700;':''}">${i.difference>0?'+':''}${i.difference}</td>
+      <td>${escapeHtml(i.reason||'—')}</td></tr>`).join('')}</tbody></table>
+  `, `<button class="btn ghost" onclick="closeModal()">Close</button>`);
+}
+
+/* ================= TRACEABILITY ================= */
+function renderTraceability(main){
+  main.innerHTml=''; // no-op safeguard
+  main.innerHTML = pageHead('Material Traceability', 'Search any Identification No. to trace its full lifecycle — supplier to dispatch/production.') +
+    `<div class="search-bar"><input id="trSearch" placeholder="Enter Identification No., e.g. A26/01/S" onkeyup="if(event.key==='Enter') runTrace()">
+      <button class="btn primary" onclick="runTrace()">Trace</button></div>
+    <div id="traceResult"></div>`;
+}
+function runTrace(){
+  const q = val('trSearch').trim();
+  const batch = DB.batches.find(b=>b.identNo.toLowerCase()===q.toLowerCase());
+  const box = document.getElementById('traceResult');
+  if(!batch){ box.innerHTML = q ? emptyState('No batch found for "'+escapeHtml(q)+'"','⌕') : ''; return; }
+  const mat = materialById(batch.materialId);
+  const party = batch.sourceType==='S' ? supplierById(batch.supplierId) : customerById(batch.customerId);
+  const issuesUsing = DB.issues.filter(i=>i.items.some(it=>it.batchId===batch.id));
+  const outwardsUsing = DB.outwards.filter(o=>o.items.some(it=>it.batchId===batch.id));
+  const scrapUsing = DB.scraps.filter(s=>s.batchId===batch.id);
+  const loc = locationById(batch.locationId);
+  box.innerHTML = `
+    <div class="panel"><div class="panel-head"><h3><span class="ident-badge">${batch.identNo}</span></h3></div>
+      <div class="panel-body">
+        <div class="flow-row">
+          <span class="flow-chip">${batch.sourceType==='S'?'Supplier':'Customer'}: ${escapeHtml(party?party.name:'—')}</span><span class="flow-arrow">→</span>
+          <span class="flow-chip">Inward ${batch.inwardNo}</span><span class="flow-arrow">→</span>
+          <span class="flow-chip">GRN ${batch.grnNo}</span><span class="flow-arrow">→</span>
+          <span class="flow-chip">Inspection: ${batch.inspectionStatus}</span><span class="flow-arrow">→</span>
+          <span class="flow-chip">Storage: ${loc?loc.rack+'/'+loc.bin:'—'}</span>
+        </div>
+        <div class="kv" style="margin-top:10px;">
+          <div class="k">Material</div><div class="v">${escapeHtml(mat.name)} (${mat.code})</div>
+          <div class="k">Received</div><div class="v">${fmtDate(batch.receivedDate)} — Qty ${batch.qtyReceived} ${mat.unit}</div>
+          <div class="k">Remaining</div><div class="v">${batch.qtyRemaining} ${mat.unit}</div>
+          <div class="k">Current Tag</div><div class="v">${tagPill(batch.tag)}</div>
+        </div>
+      </div>
+    </div>
+    <div class="grid cards3">
+      <div class="panel"><div class="panel-head"><h3>Material Issues</h3></div><div class="panel-body">
+        ${issuesUsing.length? issuesUsing.map(i=>{ const it=i.items.find(x=>x.batchId===batch.id);
+          return `<div style="padding:6px 0;border-bottom:1px solid var(--line-soft);font-size:12.5px;">${i.issueNo} — ${fmtDate(i.date)} — ${it.qty} ${mat.unit}</div>`;
+        }).join('') : `<div class="muted">None</div>`}</div></div>
+      <div class="panel"><div class="panel-head"><h3>Outward / Dispatch</h3></div><div class="panel-body">
+        ${outwardsUsing.length? outwardsUsing.map(o=>{ const it=o.items.find(x=>x.batchId===batch.id);
+          return `<div style="padding:6px 0;border-bottom:1px solid var(--line-soft);font-size:12.5px;">${o.dcNo} — ${fmtDate(o.date)} — ${escapeHtml(customerById(o.customerId)?.name||'')} — ${it.qty} ${mat.unit}</div>`;
+        }).join('') : `<div class="muted">None</div>`}</div></div>
+      <div class="panel"><div class="panel-head"><h3>Scrap</h3></div><div class="panel-body">
+        ${scrapUsing.length? scrapUsing.map(s=>`<div style="padding:6px 0;border-bottom:1px solid var(--line-soft);font-size:12.5px;">${s.scrapNo} — ${fmtDate(s.date)} — ${s.qty} ${mat.unit} (${escapeHtml(s.reason)})</div>`).join('') : `<div class="muted">None</div>`}
+      </div></div>
+    </div>`;
+}
+
+/* ================= REPORTS ================= */
+const REPORT_DEFS = [
+  {id:'stock', label:'Stock Report', get: ()=> DB.materials.map(m=>({Material:m.name, Code:m.code, Unit:m.unit, Stock:currentStock(m.id), Reorder:m.reorderLevel}))},
+  {id:'materialspec', label:'Material Specification Report', get: ()=> DB.materials.map(m=>({Material:m.name, Code:m.code, ['Extrusion No']:m.extrusionNo, ['RM Spec']:m.rmSpec, Supplier: supplierById(m.supplierId)?.name||'', ['Length (mm)']:m.lengthMm, ['Width (mm)']:m.widthMm, ['Cutting Length (mm)']:m.cuttingLengthMm, ['RM Weight (kg)']:m.rmWeightKg, ['Total Cutting Length']:m.totalCuttingLength, ['RM Required (kg)']:m.rmRequiredKg}))},
+  {id:'inward', label:'Inward Register', get: inwardCSVRowsObj},
+  {id:'issue', label:'Material Issue Register', get: ()=> issuesCSV().slice(1).map(r=>({['Issue No']:r[0],Date:r[1],['Issued By']:r[2],Material:r[3],['Identification No']:r[4],Qty:r[5]}))},
+  {id:'outward', label:'Outward Register', get: ()=> outwardCSV().slice(1).map(r=>({['DC No']:r[0],Date:r[1],Customer:r[2],Material:r[3],['Identification No']:r[4],Qty:r[5]}))},
+  {id:'scrap', label:'Scrap Register', get: ()=> scrapCSV().slice(1).map(r=>({['Scrap No']:r[0],Date:r[1],Material:r[2],['Identification No']:r[3],Qty:r[4],Reason:r[5]}))},
+  {id:'fifo', label:'FIFO Batch Report', get: ()=> DB.batches.filter(b=>b.qtyRemaining>0).map(b=>({['Identification No']:b.identNo, Material:materialById(b.materialId)?.name, Received:b.receivedDate, Remaining:b.qtyRemaining, Tag:b.tag}))},
+  {id:'expiry', label:'Expiry Report', get: ()=> DB.batches.filter(b=>b.expiryDate).map(b=>({['Identification No']:b.identNo, Material:materialById(b.materialId)?.name, Expiry:b.expiryDate, Remaining:b.qtyRemaining}))},
+  {id:'lowstock', label:'Low Stock Report', get: ()=> DB.materials.filter(m=>currentStock(m.id)<m.reorderLevel).map(m=>({Material:m.name, Stock:currentStock(m.id), Reorder:m.reorderLevel}))},
+  {id:'audit', label:'Stock Audit Report', get: ()=> DB.audits.flatMap(a=>a.items.map(i=>({Date:a.date, Material:materialById(i.materialId)?.name, System:i.systemQty, Physical:i.physicalQty, Difference:i.difference})))},
+  {id:'traceability', label:'Material Traceability (all batches)', get: ()=> DB.batches.map(b=>({['Identification No']:b.identNo, Material:materialById(b.materialId)?.name, Source: b.sourceType==='S'?supplierById(b.supplierId)?.name:customerById(b.customerId)?.name, Received:b.receivedDate, Remaining:b.qtyRemaining}))},
+  {id:'supplierwise', label:'Supplier-wise Material Report', get: ()=> DB.suppliers.map(s=>({Supplier:s.name, ['Batches Supplied']: DB.batches.filter(b=>b.supplierId===s.id).length, ['Total Qty']: DB.batches.filter(b=>b.supplierId===s.id).reduce((sum,b)=>sum+b.qtyReceived,0)}))},
+  {id:'consumption', label:'Material Consumption Report', get: ()=> DB.materials.map(m=>({Material:m.name, ['Total Issued']: DB.issues.flatMap(i=>i.items).filter(it=>it.materialId===m.id).reduce((s,it)=>s+it.qty,0)}))},
+];
+function inwardCSVRowsObj(){ return inwardCSVRows().slice(1).map(r=>({Date:r[0],['Inward No']:r[1],['Identification No']:r[2],Party:r[3],['Challan No']:r[4],Material:r[5],Qty:r[6],Status:r[7]})); }
+
+function renderReports(main){
+  main.innerHTML = pageHead('Reports', 'All registers generated automatically from live data. Export any report as CSV/Excel.') +
+    `<div class="grid cards3">` +
+    REPORT_DEFS.map(r=>`<div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <b style="font-size:13px;">${r.label}</b>
+        <button class="btn ghost sm" onclick='downloadReport("${r.id}")'>⬇ CSV</button>
+      </div>
+      <div class="muted" style="font-size:12px;margin-top:6px;">${(r.get()||[]).length} rows</div>
+    </div>`).join('') + `</div>`;
+}
+function downloadReport(id){
+  const def = REPORT_DEFS.find(r=>r.id===id); const data = def.get();
+  if(!data.length){ showToast('No data to export yet'); return; }
+  const headers = Object.keys(data[0]);
+  const rows = [headers, ...data.map(d=>headers.map(h=>d[h]))];
+  exportCSV(rows, def.label.replace(/\s+/g,'_')+'.csv');
+}
+function exportCSV(rows, filename){
+  const csv = rows.map(r=>r.map(c=>{
+    const s = String(c===undefined||c===null?'':c);
+    return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+  }).join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download=filename; a.click(); URL.revokeObjectURL(url);
+  showToast('Downloaded '+filename);
+}
+
+/* ================= KPI ================= */
+function renderKPI(main){
+  const totalOutward = DB.outwards.length;
+  const onTime = totalOutward; // no delay tracking captured yet — treated as on-time by default
+  const onTimePct = totalOutward ? ((onTime/totalOutward)*100).toFixed(1) : '—';
+  const scrapCount = DB.scraps.filter(s=>s.reason==='Damage').length;
+  main.innerHTML = pageHead('Management KPIs', 'Per KKI-QMS-06 §5 Key Process Indicators.') +
+    `<div class="grid cards3">
+      <div class="card stat"><div class="label">On-Time Delivery</div><div class="value good">${onTimePct}${totalOutward?'%':''}</div>
+        <div class="muted" style="font-size:11.5px;">${totalOutward} dispatches recorded</div></div>
+      <div class="card stat"><div class="label">Packing / Delivery Errors</div><div class="value">${scrapCount}</div>
+        <div class="muted" style="font-size:11.5px;">Damage-related scrap entries (proxy metric)</div></div>
+      <div class="card stat"><div class="label">Customer Complaints</div><div class="value">0</div>
+        <div class="muted" style="font-size:11.5px;">No complaint log module yet — configurable in Phase 3</div></div>
+    </div>
+    <div class="section-note" style="margin-top:16px;">These three KPIs come directly from your manual's Key Process Indicators. On-time delivery and packing error tracking will become more accurate once dispatch due-dates and complaint logging are added in Phase 3.</div>`;
+}
+
+/* ================= AUTH / LOGIN ================= */
+function showLoginScreen(msg){
+  document.getElementById('app').innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:center;height:100vh;background:var(--bg);">
+      <div style="width:320px;padding:30px;border:1px solid var(--line);border-radius:12px;background:var(--panel);box-shadow:0 8px 30px rgba(0,0,0,.08);">
+        <div style="font-weight:700;font-size:16px;">K K INDUSTRIES</div>
+        <div class="muted" style="margin-bottom:20px;font-size:12.5px;">Digital Store Management — Sign in</div>
+        ${msg?`<div style="color:var(--danger);font-size:12.5px;margin-bottom:12px;">${escapeHtml(msg)}</div>`:''}
+        <div class="field"><label>Username</label><input id="loginUser" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()"></div>
+        <div class="field"><label>Password</label><input id="loginPass" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"></div>
+        <button class="btn primary" style="width:100%;margin-top:10px;" onclick="doLogin()">Sign in</button>
+      </div>
+    </div>`;
+  const u = document.getElementById('loginUser'); if(u) u.focus();
+}
+async function doLogin(){
+  const username = (document.getElementById('loginUser').value||'').trim();
+  const password = document.getElementById('loginPass').value||'';
+  if(!username || !password){ showLoginScreen('Enter username and password'); return; }
+  try{
+    const res = await fetch('/api/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username,password})});
+    if(res.ok){
+      const j = await res.json();
+      CURRENT_USER = j.username || username;
+      await loadDB();
+      render();
+    } else {
+      showLoginScreen('Invalid username or password');
+    }
+  }catch(e){ showLoginScreen('Could not reach server — is it running?'); }
+}
+async function doLogout(){
+  try{ await fetch('/api/logout', {method:'POST'}); }catch(e){}
+  CURRENT_USER = null; DB = null;
+  showLoginScreen();
+}
+async function checkSessionAndBoot(){
+  try{
+    const res = await fetch('/api/session');
+    const j = await res.json();
+    if(j && j.logged_in){
+      CURRENT_USER = j.username;
+      await loadDB();
+      render();
+    } else {
+      showLoginScreen();
+    }
+  }catch(e){
+    showLoginScreen('Could not reach server — is it running?');
+  }
+}
+
+/* ================= BOOT ================= */
+(async function boot(){
+  await checkSessionAndBoot();
+})();
+</script>
+</body>
+</html>
