@@ -191,9 +191,36 @@
   .icon-btn{background:none; border:none; cursor:pointer; color:var(--ink-faint); font-size:14px; padding:3px 5px; border-radius:4px;}
   .icon-btn:hover{background:var(--grey-tint); color:var(--ink);}
 
+  /* MOBILE / RESPONSIVE */
+  .mobile-menu-btn{display:none; position:fixed; top:12px; left:12px; z-index:70; background:var(--sidebar);
+    color:#fff; border:none; width:40px; height:40px; border-radius:9px; font-size:18px; align-items:center;
+    justify-content:center; box-shadow:var(--shadow); cursor:pointer;}
+  .mobile-menu-btn.hide{display:none !important;}
+  .sidebar-backdrop{display:none; position:fixed; inset:0; background:rgba(10,10,10,.5); z-index:64;}
+  .sidebar-backdrop.open{display:block;}
+
+  @media (max-width: 860px){
+    .mobile-menu-btn{display:flex;}
+    #sidebar{position:fixed; top:0; left:0; height:100vh; z-index:65; width:250px; flex:0 0 250px;
+      transform:translateX(-100%); transition:transform .22s ease; box-shadow:3px 0 20px rgba(0,0,0,.28);}
+    #sidebar.open{transform:translateX(0);}
+    #main{padding:64px 14px 50px; width:100%;}
+    .cards4,.cards3,.cards2{grid-template-columns:repeat(2,1fr);}
+    .topbar{flex-direction:column; align-items:flex-start; gap:10px;}
+    .topbar > div:last-child{display:flex; flex-wrap:wrap; gap:8px;}
+    .panel-body{overflow-x:auto; -webkit-overflow-scrolling:touch;}
+    table{min-width:640px;}
+    .modal{width:94vw !important; max-width:94vw !important;}
+    .field-row,.field-row3{grid-template-columns:1fr !important;}
+  }
+  @media (max-width: 480px){
+    .cards4,.cards3,.cards2{grid-template-columns:1fr;}
+    #main{padding:60px 10px 50px;}
+  }
+
   .print-only{display:none;}
   @media print{
-    #sidebar,.topbar .btn,.no-print{display:none !important;}
+    #sidebar,.topbar .btn,.no-print,.mobile-menu-btn{display:none !important;}
     #main{padding:0; overflow:visible;}
     body{background:#fff;}
     .print-only{display:block;}
@@ -205,6 +232,8 @@
 </style>
 </head>
 <body>
+<button id="mobileMenuBtn" class="mobile-menu-btn no-print" onclick="toggleMobileSidebar()">☰</button>
+<div id="sidebarBackdrop" class="sidebar-backdrop no-print" onclick="closeMobileSidebar()"></div>
 <div id="app"><div class="loading-screen">Loading KKI Stores…</div></div>
 <div id="toast" class="toast"></div>
 
@@ -518,7 +547,25 @@ function renderSidebar(){
   document.getElementById('sidebar').innerHTML = html;
 }
 
-function navigate(route, sub){ ROUTE = route; ROUTE_SUB = sub||null; render(); }
+function navigate(route, sub){ ROUTE = route; ROUTE_SUB = sub||null; render(); closeMobileSidebar(); }
+
+function toggleMobileSidebar(){
+  const sb = document.getElementById('sidebar');
+  const bd = document.getElementById('sidebarBackdrop');
+  const mb = document.getElementById('mobileMenuBtn');
+  if(!sb || !bd) return;
+  sb.classList.toggle('open');
+  bd.classList.toggle('open');
+  if(mb) mb.classList.toggle('hide', sb.classList.contains('open'));
+}
+function closeMobileSidebar(){
+  const sb = document.getElementById('sidebar');
+  const bd = document.getElementById('sidebarBackdrop');
+  const mb = document.getElementById('mobileMenuBtn');
+  if(sb) sb.classList.remove('open');
+  if(bd) bd.classList.remove('open');
+  if(mb) mb.classList.remove('hide');
+}
 
 function render(){
   document.getElementById('app').innerHTML = `<div id="sidebar"></div><div id="main"></div>`;
