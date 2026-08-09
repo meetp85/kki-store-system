@@ -768,7 +768,7 @@ function renderMaterialsTable(){
         <td class="num" style="${low?'color:var(--danger);font-weight:700;':''}">${stock}</td>
         <td class="num muted">${m.reorderLevel}</td>
         <td>${low?'<span class="pill pending">Low</span>':'<span class="pill issued">OK</span>'}</td>
-        <td><button class="icon-btn" onclick="openMaterialForm('${m.id}')">✎ Edit</button> <button class="icon-btn" onclick="viewMaterialSpec('${m.id}')">◇ Spec</button></td>
+        <td><button class="icon-btn" onclick="openMaterialForm('${m.id}')">✎ Edit</button> <button class="icon-btn" onclick="viewMaterialSpec('${m.id}')">◇ Spec</button> <button class="icon-btn" style="color:var(--danger);" onclick="deleteMaterial('${m.id}')">🗑 Delete</button></td>
       </tr>`;
     }).join('') : `<tr class="empty-row"><td colspan="11">No materials found. Add your first material to get started.</td></tr>`}
     </tbody>`;
@@ -857,6 +857,20 @@ function viewMaterialSpec(id){
       <div class="k">RM Required</div><div class="v">${m.rmRequiredKg||'—'} kg</div>
     </div>
   `, `<button class="btn ghost" onclick="closeModal()">Close</button><button class="btn primary" onclick="closeModal();openMaterialForm('${m.id}')">Edit</button>`);
+}
+
+function deleteMaterial(id){
+  const m = materialById(id);
+  if(!m) return;
+  const hasTxns = DB.transactions.some(t=>t.materialId===id) || DB.batches.some(b=>b.materialId===id);
+  const warn = hasTxns
+    ? `\n\n⚠ This material has stock/transaction history (inward, issues, or batches). Deleting it will NOT delete those records, but they will show a missing material reference. Only delete if this was test/sample data.`
+    : '';
+  if(!confirm(`Delete "${m.name}" (${m.code}) from Material Master? This cannot be undone.${warn}`)) return;
+  DB.materials = DB.materials.filter(x=>x.id!==id);
+  saveDB();
+  showToast(`Deleted "${m.name}"`);
+  renderMaterials(document.getElementById('main'));
 }
 
 /* ================= SUPPLIERS ================= */
