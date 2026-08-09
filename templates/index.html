@@ -2,8 +2,19 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>KKI Stores — Digital Store Management System</title>
+
+<!-- PWA: makes the app installable to a phone's home screen -->
+<link rel="manifest" href="/static/manifest.json">
+<meta name="theme-color" content="#12151B">
+<link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png">
+<!-- iOS-specific "Add to Home Screen" support -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="KKI Stores">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -1651,6 +1662,13 @@ async function checkSessionAndBoot(){
 (async function boot(){
   await checkSessionAndBoot();
 })();
+
+/* Register service worker (enables "Add to Home Screen" install) */
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('/static/sw.js').catch(e=>console.error('SW registration failed', e));
+  });
+}
 </script>
 </body>
 </html>
