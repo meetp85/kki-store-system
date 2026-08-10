@@ -1056,6 +1056,7 @@ function changeBatchTag(batchId, newTag){
   const oldTag = b.tag;
   if(oldTag === newTag) return;
   b.tag = newTag;
+  b.inspectionStatus = inspectionLabelFromTag(newTag);
   logTxn({
     date: todayISO(), materialId: b.materialId, batchId: b.id, type: 'Tag Change', ref: b.identNo,
     remarks: `Tag changed from ${oldTag} to ${newTag}`
@@ -1611,6 +1612,10 @@ function renderTraceability(main){
       <button class="btn primary" onclick="runTrace()">Trace</button></div>
     <div id="traceResult"></div>`;
 }
+function inspectionLabelFromTag(tag){
+  const map = { green:'Inspected & Approved', yellow:'Pending Inspection', red:'Rejected', blue:'Supplier Sourced', white:'Customer Supplied' };
+  return map[tag] || tag;
+}
 function runTrace(){
   const q = val('trSearch').trim();
   const batch = DB.batches.find(b=>b.identNo.toLowerCase()===q.toLowerCase());
@@ -1629,7 +1634,7 @@ function runTrace(){
           <span class="flow-chip">${batch.sourceType==='S'?'Supplier':'Customer'}: ${escapeHtml(party?party.name:'—')}</span><span class="flow-arrow">→</span>
           <span class="flow-chip">Inward ${batch.inwardNo}</span><span class="flow-arrow">→</span>
           <span class="flow-chip">GRN ${batch.grnNo}</span><span class="flow-arrow">→</span>
-          <span class="flow-chip">Inspection: ${batch.inspectionStatus}</span><span class="flow-arrow">→</span>
+          <span class="flow-chip">Inspection: ${inspectionLabelFromTag(batch.tag)}</span><span class="flow-arrow">→</span>
           <span class="flow-chip">Storage: ${loc?loc.rack+'/'+loc.bin:'—'}</span>
         </div>
         <div class="kv" style="margin-top:10px;">
