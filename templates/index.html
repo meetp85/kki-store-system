@@ -1028,7 +1028,7 @@ function saveLocation(){
 /* ================= TAGS ================= */
 function renderTags(main){
   main.innerHTML = pageHead('Tag Management', 'Per KKI-QMS-06 §Responsibility: Store Incharge issues White, Yellow, Red, Green & Blue tags.') +
-    `<div class="section-note">The manual lists these five tag colours without fixing exact meanings — the definitions below are configurable defaults for your review. Materials tagged <b>Red</b> are automatically blocked from Issue and Outward.</div>
+    `<div class="section-note">The manual lists these five tag colours without fixing exact meanings — the definitions below are configurable defaults for your review. Materials tagged <b>Red</b> are automatically blocked from Issue and Outward. Materials tagged anything other than <b>Green</b> are not counted as available stock.</div>
     <div class="grid cards2">
     ${DB.tagDefs.map(t=>`<div class="card"><div class="tag ${t.code}" style="margin-bottom:8px;"><span class="dot ${t.code}"></span>${t.label}</div>
       <div class="muted" style="font-size:12.5px;">${t.desc}</div></div>`).join('')}
@@ -1036,13 +1036,34 @@ function renderTags(main){
     <div class="panel" style="margin-top:16px;">
       <div class="panel-head"><h3>Batches by Tag</h3></div>
       <div class="panel-body" style="padding:0;">
-        <table><thead><tr><th>Identification No.</th><th>Material</th><th>Tag</th><th class="num">Qty Remaining</th><th>Received</th></tr></thead>
+        <table><thead><tr><th>Identification No.</th><th>Material</th><th>Tag</th><th class="num">Qty Remaining</th><th>Received</th><th>Update Tag</th></tr></thead>
         <tbody>${DB.batches.length? DB.batches.slice().reverse().map(b=>`<tr>
           <td><span class="ident-badge">${b.identNo}</span></td><td>${escapeHtml(materialById(b.materialId)?.name||'')}</td>
-          <td>${tagPill(b.tag)}</td><td class="num">${b.qtyRemaining}</td><td>${fmtDate(b.receivedDate)}</td></tr>`).join('') :
-          `<tr class="empty-row"><td colspan="5">No batches yet.</td></tr>`}</tbody></table>
+          <td>${tagPill(b.tag)}</td><td class="num">${b.qtyRemaining}</td><td>${fmtDate(b.receivedDate)}</td>
+          <td>${b.tag==='yellow'?`<button class="btn sm primary" onclick="changeBatchTag('${b.id}','green')">✓ Mark Inspected</button>`:''}
+              <select class="filter" onchange="changeBatchTag('${b.id}', this.value)" style="margin-left:6px;">
+                <option value="">Change to…</option>
+                ${DB.tagDefs.filter(t=>t.code!==b.tag).map(t=>`<option value="${t.code}">${t.label}</option>`).join('')}
+              </select></td></tr>`).join('') :
+          `<tr class="empty-row"><td colspan="6">No batches yet.</td></tr>`}</tbody></table>
       </div>
     </div>`;
+}
+function changeBatchTag(batchId, newTag){
+  if(!newTag) return;
+  const b = DB.batches.find(x=>x.id===batchId);
+  if(!b) return;
+  const oldTag = b.tag;
+  if(oldTag === newTag) return;
+  b.tag = newTag;
+  logTxn({
+    date: todayISO(), materialId: b.materialId, batchId: b.id, type: 'Tag Change', ref: b.identNo,
+    remarks: `Tag changed from ${oldTag} to ${newTag}`
+  });
+  saveDB();
+  const label = newTag==='green' ? 'marked Inspected (Green) — now available as stock' : `tag changed to ${newTag}`;
+  showToast(`${b.identNo}: ${label}`);
+  renderTags(document.getElementById('main'));
 }
 
 /* ================= INWARD ================= */
