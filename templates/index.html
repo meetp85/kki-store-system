@@ -1324,13 +1324,23 @@ function submitRequisition(){
 function renderRequisitions(main){
   main.innerHTML = pageHead('Material Requisitions', 'Pending, approved and issued production requests.') +
     `<div class="panel"><div class="panel-body" style="padding:0;"><table><thead><tr>
-      <th>Req. No.</th><th>Date</th><th>Department</th><th>Job No.</th><th>Items</th><th>Status</th><th></th></tr></thead>
-      <tbody>${DB.requisitions.length? DB.requisitions.slice().reverse().map(r=>`<tr>
-        <td class="mono">${r.reqNo}</td><td>${fmtDate(r.date)}</td><td>${escapeHtml(r.department)}</td><td>${escapeHtml(r.jobNo||'—')}</td>
+      <th>Req. No.</th><th>Date Raised</th><th>Required By</th><th>Department</th><th>Job No.</th><th>Items</th><th>Status</th><th></th></tr></thead>
+      <tbody>${DB.requisitions.length? DB.requisitions.slice().reverse().map(r=>{
+        const daysLeft = r.requiredDate ? daysBetween(todayISO(), r.requiredDate) : null;
+        let dueBadge = '';
+        if(r.status==='Pending' && daysLeft!==null){
+          if(daysLeft < 0) dueBadge = `<span class="pill rejected" style="margin-left:6px;">Overdue</span>`;
+          else if(daysLeft === 0) dueBadge = `<span class="pill pending" style="margin-left:6px;">Due Today</span>`;
+        }
+        return `<tr>
+        <td class="mono">${r.reqNo}</td><td>${fmtDate(r.date)}</td>
+        <td>${r.requiredDate?fmtDate(r.requiredDate):'—'}${dueBadge}</td>
+        <td>${escapeHtml(r.department)}</td><td>${escapeHtml(r.jobNo||'—')}</td>
         <td>${r.items.map(i=>escapeHtml(materialById(i.materialId)?.name||'')+' ('+i.qty+')').join(', ')}</td>
         <td><span class="pill ${r.status.toLowerCase()}">${r.status}</span></td>
         <td>${r.status==='Pending' ? `<button class="link-btn" onclick="openIssueForRequisition('${r.id}')">Issue →</button>` : '—'}</td>
-        </tr>`).join('') : `<tr class="empty-row"><td colspan="7">No requisitions yet. <span class="link-btn" onclick="navigate('requisition-new')">Create one</span></td></tr>`}</tbody></table>
+        </tr>`;
+      }).join('') : `<tr class="empty-row"><td colspan="8">No requisitions yet. <span class="link-btn" onclick="navigate('requisition-new')">Create one</span></td></tr>`}</tbody></table>
     </div></div>`;
 }
 function openIssueForRequisition(reqId){
