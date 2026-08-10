@@ -1361,6 +1361,19 @@ function openIssueForRequisition(reqId){
 }
 function confirmIssue(reqId){
   const r = DB.requisitions.find(x=>x.id===reqId);
+  const errors = [];
+  r.items.forEach(it=>{
+    const { shortfall } = fifoAllocate(it.materialId, it.qty);
+    if(shortfall>0){
+      const name = materialById(it.materialId)?.name || 'Material';
+      const avail = currentStock(it.materialId);
+      errors.push(`${name}: only ${avail} available, requisition asks for ${it.qty}`);
+    }
+  });
+  if(errors.length){
+    showToast(`⚠ Not enough stock to issue — ${errors.join('; ')}`);
+    return;
+  }
   const rec = doIssue({ requisitionId:reqId, items: r.items, issuedBy: val('iss_by'), date: todayISO() });
   saveDB(); closeModal();
   showToast(`Issued — ${rec.issueNo}`);
@@ -1408,15 +1421,38 @@ function addOwRow(){
   row.innerHTML = `<select class="ow-mat">${optionsFor(DB.materials,'id',m=>m.name)}</select>
     <input class="ow-qty" type="number" min="0" placeholder="Qty">
     <span class="muted ow-unit" style="font-size:12px;">${DB.materials[0]?DB.materials[0].unit:''}</span>
-    <button class="rm-row" onclick="this.parentElement.remove()">&times;</button>`;
-  row.querySelector('.ow-mat').addEventListener('change', e=>{ row.querySelector('.ow-unit').textContent = materialById(e.target.value)?.unit||''; });
+    <button class="rm-row" onclick="this.parentElement.remove()">&times;</button>
+    <div class="ow-avail muted" style="font-size:11.5px;width:100%;margin-top:2px;"></div>`;
+  const updateAvail = ()=>{
+    const matId = row.querySelector('.ow-mat').value;
+    const m = materialById(matId);
+    row.querySelector('.ow-unit').textContent = m?.unit||'';
+    const avail = matId ? currentStock(matId) : 0;
+    row.querySelector('.ow-avail').textContent = matId ? `Available: ${avail} ${m?.unit||''}` : '';
+  };
+  row.querySelector('.ow-mat').addEventListener('change', updateAvail);
   wrap.appendChild(row);
+  updateAvail();
 }
 function submitOutward(){
   if(!val('ow_customer')){ showToast('Select a customer'); return; }
   const rows = [...document.querySelectorAll('#owItems .irow')];
   const items = rows.map(r=>({materialId:r.querySelector('.ow-mat').value, qty:+r.querySelector('.ow-qty').value})).filter(i=>i.materialId&&i.qty>0);
   if(!items.length){ showToast('Add at least one material with quantity'); return; }
+
+  const errors = [];
+  items.forEach(it=>{
+    const avail = currentStock(it.materialId);
+    if(it.qty > avail){
+      const name = materialById(it.materialId)?.name || 'Material';
+      errors.push(`${name}: only ${avail} available, you entered ${it.qty}`);
+    }
+  });
+  if(errors.length){
+    showToast(`⚠ Not enough stock — ${errors.join('; ')}`);
+    return;
+  }
+
   const rec = doOutward({ customerId: val('ow_customer'), date: val('ow_date'), vehicle: val('ow_vehicle'), driver: val('ow_driver'),
     destination: val('ow_dest'), remarks: val('ow_remarks'), items });
   saveDB();
