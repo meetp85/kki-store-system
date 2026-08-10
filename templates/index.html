@@ -273,12 +273,33 @@ function emptyDB(){
 }
 
 /* ---------- Persistence (server-backed, shared across all logged-in users) ---------- */
+/* Fills in any fields missing from an older saved database (e.g. a section
+   added in a later update) so existing accounts never crash when the app
+   evolves. Always safe to run - never touches data that's already there. */
+function migrateDB(db){
+  const defaults = emptyDB();
+  Object.keys(defaults).forEach(key=>{
+    if(db[key]===undefined) db[key] = defaults[key];
+  });
+  if(db.seq && typeof db.seq === 'object'){
+    Object.keys(defaults.seq).forEach(k=>{ if(db.seq[k]===undefined) db.seq[k] = defaults.seq[k]; });
+  } else {
+    db.seq = defaults.seq;
+  }
+  if(db.settings && typeof db.settings === 'object'){
+    Object.keys(defaults.settings).forEach(k=>{ if(db.settings[k]===undefined) db.settings[k] = defaults.settings[k]; });
+  } else {
+    db.settings = defaults.settings;
+  }
+  if(!Array.isArray(db.tagDefs) || !db.tagDefs.length) db.tagDefs = defaults.tagDefs;
+  return db;
+}
 async function loadDB(){
   try{
     const res = await fetch('/api/state');
     if(res.ok){
       const json = await res.json();
-      if(json && json.data){ DB = JSON.parse(json.data); return; }
+      if(json && json.data){ DB = migrateDB(JSON.parse(json.data)); return; }
     }
   }catch(e){ console.error('Load failed', e); }
   DB = emptyDB();
@@ -1918,17 +1939,24 @@ async function doLogin(){
   const username = (document.getElementById('loginUser').value||'').trim();
   const password = document.getElementById('loginPass').value||'';
   if(!username || !password){ showLoginScreen('Enter username and password'); return; }
+  let res;
   try{
-    const res = await fetch('/api/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username,password})});
-    if(res.ok){
-      const j = await res.json();
-      CURRENT_USER = j.username || username;
-      await loadDB();
-      render();
-    } else {
-      showLoginScreen('Invalid username or password');
-    }
-  }catch(e){ showLoginScreen('Could not reach server — is it running?'); }
+    res = await fetch('/api/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username,password})});
+  }catch(e){
+    console.error('Login network error', e);
+    showLoginScreen('Could not reach server — is it running?');
+    return;
+  }
+  if(!res.ok){ showLoginScreen('Invalid username or password'); return; }
+  try{
+    const j = await res.json();
+    CURRENT_USER = j.username || username;
+    await loadDB();
+    render();
+  }catch(e){
+    console.error('Error after login (loading/rendering data)', e);
+    showLoginScreen('Signed in, but something went wrong loading the app — check browser console (F12) and tell support the error shown there.');
+  }
 }
 async function doLogout(){
   try{ await fetch('/api/logout', {method:'POST'}); }catch(e){}
@@ -1936,18 +1964,26 @@ async function doLogout(){
   showLoginScreen();
 }
 async function checkSessionAndBoot(){
+  let res, j;
   try{
-    const res = await fetch('/api/session');
-    const j = await res.json();
-    if(j && j.logged_in){
-      CURRENT_USER = j.username;
+    res = await fetch('/api/session');
+    j = await res.json();
+  }catch(e){
+    console.error('Session check network error', e);
+    showLoginScreen('Could not reach server — is it running?');
+    return;
+  }
+  if(j && j.logged_in){
+    CURRENT_USER = j.username;
+    try{
       await loadDB();
       render();
-    } else {
-      showLoginScreen();
+    }catch(e){
+      console.error('Error loading/rendering after session check', e);
+      showLoginScreen('Signed in, but something went wrong loading the app — check browser console (F12) and tell support the error shown there.');
     }
-  }catch(e){
-    showLoginScreen('Could not reach server — is it running?');
+  } else {
+    showLoginScreen();
   }
 }
 
