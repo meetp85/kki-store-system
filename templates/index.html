@@ -258,7 +258,8 @@ function emptyDB(){
     materials: [], suppliers: [], customers: [], locations: [],
     batches: [], transactions: [],
     requisitions: [], issues: [], outwards: [], scraps: [], audits: [],
-    seq: { material:0, supplier:0, customer:0, batch:0, inward:0, grn:0, req:0, issue:0, outward:0, scrap:0, audit:0 },
+    returnables: [],
+    seq: { material:0, supplier:0, customer:0, batch:0, inward:0, grn:0, req:0, issue:0, outward:0, scrap:0, audit:0, returnable:0 },
     identCounters: {},
     tagDefs: [
       {code:'green', label:'Green — Approved / Usable', desc:'Material inspected & accepted. Available for issue.'},
@@ -477,6 +478,49 @@ function doScrap(o){
   return rec;
 }
 
+/* ---------- Returnable Challan (Job Work) ---------- */
+function doSendJobWork(o){
+  DB.seq.returnable++;
+  const rcNo = uid('RC', DB.seq.returnable);
+  const { plan } = fifoAllocate(o.materialId, o.qty);
+  const usedBatches = [];
+  plan.forEach(p=>{
+    const b = batchById(p.batchId); b.qtyRemaining -= p.qty;
+    logTxn({date:o.dateSent, materialId:o.materialId, batchId:b.id, type:'Job Work Out', ref:o.challanNo||rcNo, qtyOut:p.qty, remarks:`Sent to job worker${o.process?' for '+o.process:''}`});
+    usedBatches.push({batchId:b.id, identNo:b.identNo, qty:p.qty});
+  });
+  const rec = {
+    id:'rc_'+DB.seq.returnable, rcNo, challanNo:o.challanNo||'', materialId:o.materialId, supplierId:o.supplierId,
+    process:o.process||'', qtySent:+o.qty, qtyReceived:0, qtyShortage:0,
+    dateSent:o.dateSent||todayISO(), expectedReturnDate:o.expectedReturnDate||'',
+    status:'Sent', remarks:o.remarks||'', usedBatches, receipts:[]
+  };
+  DB.returnables.push(rec);
+  return rec;
+}
+function returnablePending(r){ return r.qtySent - r.qtyReceived - r.qtyShortage; }
+function doReceiveJobWork(returnableId, o){
+  const r = DB.returnables.find(x=>x.id===returnableId);
+  if(!r) return null;
+  const qtyNow = +o.qtyReceivedNow||0;
+  const shortageNow = +o.shortageQty||0;
+  const date = o.date||todayISO();
+  let newBatch = null;
+  if(qtyNow>0){
+    newBatch = doInward({
+      materialId:r.materialId, supplierId:r.supplierId, sourceType:'S',
+      challanNo: r.challanNo || r.rcNo, challanDate:date, qty:qtyNow,
+      inspectionStatus:'Pending Inspection',
+      remarks:`Returned from job work — ${r.rcNo}${r.process?' ('+r.process+')':''}. Re-inspection required before use.`
+    }, false);
+  }
+  r.qtyReceived += qtyNow;
+  r.qtyShortage += shortageNow;
+  r.receipts.push({date, qty:qtyNow, shortageQty:shortageNow, shortageReason:o.shortageReason||'', remarks:o.remarks||'', newBatchId:newBatch?newBatch.id:null});
+  r.status = returnablePending(r)<=0 ? 'Closed' : 'Partially Received';
+  return r;
+}
+
 /* ================= RENDER ENGINE ================= */
 const NAV = [
   {group:'', items:[ {id:'dashboard', label:'Dashboard', ic:'⌂'} ]},
@@ -510,6 +554,10 @@ const NAV = [
     {id:'scrap-new', label:'New Scrap Entry', ic:'♻'},
     {id:'scrap-register', label:'Scrap Register', ic:'≡'},
   ]},
+  {group:'Returnable Challan', items:[
+    {id:'returnable-new', label:'Send for Job Work', ic:'↷'},
+    {id:'returnable-register', label:'Returnable Register', ic:'≡', badgeKey:'returnableOverdue'},
+  ]},
   {group:'Control', items:[
     {id:'audit', label:'Stock Audit', ic:'✓'},
     {id:'traceability', label:'Traceability', ic:'⌕'},
@@ -525,6 +573,7 @@ function badgeCounts(){
     reorder: DB.materials.filter(m=>currentStock(m.id) < m.reorderLevel).length,
     expiry: DB.batches.filter(b=>b.expiryDate && b.tag==='green' && daysBetween(todayISO(), b.expiryDate) <= 7).length,
     pendingReq: DB.requisitions.filter(r=>r.status==='Pending').length,
+    returnableOverdue: DB.returnables.filter(r=>r.status!=='Closed' && r.expectedReturnDate && daysBetween(todayISO(), r.expectedReturnDate) < 0).length,
   };
 }
 
@@ -578,6 +627,7 @@ function render(){
     'requisition-new': renderRequisitionNew, requisitions: renderRequisitions, issues: renderIssues,
     'outward-new': renderOutwardNew, 'outward-register': renderOutwardRegister,
     'scrap-new': renderScrapNew, 'scrap-register': renderScrapRegister,
+    'returnable-new': renderReturnableNew, 'returnable-register': renderReturnableRegister,
     audit: renderAudit, traceability: renderTraceability, reports: renderReports, kpi: renderKPI,
   };
   (routes[ROUTE] || renderDashboard)(main);
@@ -1554,6 +1604,130 @@ function renderScrapRegister(main){
 function scrapCSV(){
   return [['Scrap No','Date','Material','Identification No','Qty','Reason','Department','Approved By','Disposal Method'],
     ...DB.scraps.map(s=>[s.scrapNo,s.date,materialById(s.materialId)?.name||'',s.identNo,s.qty,s.reason,s.department,s.approvedBy,s.disposalMethod])];
+}
+
+/* ================= RETURNABLE CHALLAN (JOB WORK) ================= */
+function renderReturnableNew(main){
+  main.innerHTml='';
+  main.innerHTML = pageHead('Send for Job Work', 'Material sent out to a job worker (e.g. plating, cutting, coating) on a returnable challan — stays trackable until it comes back.') + `
+    <div class="panel"><div class="panel-body">
+      <div class="field-row">
+        <div class="field"><label>Material *</label><select id="rc_mat" onchange="rcUpdateAvail()">${optionsFor(DB.materials,'id',m=>m.name)}</select></div>
+        <div class="field"><label>Job Worker (Supplier) *</label><select id="rc_supplier">${optionsFor(DB.suppliers,'id',s=>s.name)}</select></div>
+      </div>
+      <div class="muted" id="rc_avail" style="font-size:11.5px;margin:-8px 0 12px;"></div>
+      <div class="field-row">
+        <div class="field"><label>Process</label><input id="rc_process" placeholder="e.g. Teeth Cutting, Plating, Heat Treatment"></div>
+        <div class="field"><label>Quantity *</label><input id="rc_qty" type="number" min="0"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Challan No.</label><input id="rc_challan" placeholder="Your physical challan number"></div>
+        <div class="field"><label>Date Sent</label><input id="rc_date" type="date" value="${todayISO()}"></div>
+      </div>
+      <div class="field"><label>Expected Return Date</label><input id="rc_expected" type="date"></div>
+      <div class="field"><label>Remarks</label><textarea id="rc_remarks" rows="2"></textarea></div>
+      <button class="btn primary" onclick="submitReturnable()">Send for Job Work</button>
+    </div></div>`;
+  rcUpdateAvail();
+}
+function rcUpdateAvail(){
+  const matId = val('rc_mat');
+  const el = document.getElementById('rc_avail');
+  if(!matId){ el.textContent=''; return; }
+  const m = materialById(matId);
+  el.textContent = `Available: ${currentStock(matId)} ${m?.unit||''}`;
+}
+function submitReturnable(){
+  const materialId = val('rc_mat'), supplierId = val('rc_supplier'), qty = +val('rc_qty');
+  if(!materialId){ showToast('Select a material'); return; }
+  if(!supplierId){ showToast('Select the job worker (supplier)'); return; }
+  if(!qty || qty<=0){ showToast('Enter a valid quantity'); return; }
+  const avail = currentStock(materialId);
+  if(qty > avail){
+    const name = materialById(materialId)?.name || 'Material';
+    showToast(`⚠ Not enough stock — ${name}: only ${avail} available, you entered ${qty}`);
+    return;
+  }
+  const rec = doSendJobWork({
+    materialId, supplierId, qty, process: val('rc_process'), challanNo: val('rc_challan'),
+    dateSent: val('rc_date'), expectedReturnDate: val('rc_expected'), remarks: val('rc_remarks')
+  });
+  saveDB();
+  showToast(`Sent for job work — ${rec.rcNo}`);
+  navigate('returnable-register');
+}
+function renderReturnableRegister(main){
+  main.innerHTml='';
+  main.innerHTML = pageHead('Returnable Challan Register', 'Material sent for job work — tracked until fully received back.',
+    `<button class="btn ghost" onclick="exportCSV(returnableCSV(),'Returnable_Register.csv')">⬇ Export CSV</button>`) +
+    `<div class="panel"><div class="panel-body" style="padding:0;"><table><thead><tr>
+      <th>RC No.</th><th>Challan No.</th><th>Material</th><th>Job Worker</th><th>Process</th>
+      <th class="num">Sent</th><th class="num">Received</th><th class="num">Shortage</th>
+      <th>Expected Return</th><th>Status</th><th></th></tr></thead>
+      <tbody>${DB.returnables.length? DB.returnables.slice().reverse().map(r=>{
+        const sup = supplierById(r.supplierId);
+        const overdue = r.status!=='Closed' && r.expectedReturnDate && daysBetween(todayISO(), r.expectedReturnDate) < 0;
+        const statusClass = r.status==='Closed' ? 'issued' : (r.status==='Partially Received' ? 'approved' : 'pending');
+        return `<tr>
+          <td class="mono">${r.rcNo}</td><td>${escapeHtml(r.challanNo||'—')}</td>
+          <td>${escapeHtml(materialById(r.materialId)?.name||'')}</td><td>${escapeHtml(sup?sup.name:'—')}</td>
+          <td>${escapeHtml(r.process||'—')}</td>
+          <td class="num">${r.qtySent}</td><td class="num">${r.qtyReceived}</td><td class="num">${r.qtyShortage||0}</td>
+          <td>${r.expectedReturnDate?fmtDate(r.expectedReturnDate):'—'}${overdue?` <span class="pill rejected">Overdue</span>`:''}</td>
+          <td><span class="pill ${statusClass}">${r.status}</span></td>
+          <td>${r.status!=='Closed' ? `<button class="link-btn" onclick="openReceiveJobWork('${r.id}')">Receive Back →</button>` : '—'}</td>
+        </tr>`;
+      }).join('') : `<tr class="empty-row"><td colspan="11">No returnable challans yet. <span class="link-btn" onclick="navigate('returnable-new')">Send one</span></td></tr>`}</tbody></table>
+    </div></div>`;
+}
+function returnableCSV(){
+  return [['RC No','Challan No','Material','Job Worker','Process','Qty Sent','Qty Received','Qty Shortage','Date Sent','Expected Return','Status'],
+    ...DB.returnables.map(r=>[r.rcNo,r.challanNo,materialById(r.materialId)?.name||'',supplierById(r.supplierId)?.name||'',r.process,r.qtySent,r.qtyReceived,r.qtyShortage,r.dateSent,r.expectedReturnDate,r.status])];
+}
+function openReceiveJobWork(rcId){
+  const r = DB.returnables.find(x=>x.id===rcId);
+  if(!r) return;
+  const pending = returnablePending(r);
+  const mat = materialById(r.materialId);
+  modal(`Receive Back — ${r.rcNo}`, `
+    <div class="kv" style="margin-bottom:12px;">
+      <div class="k">Material</div><div class="v">${escapeHtml(mat?.name||'')}</div>
+      <div class="k">Sent</div><div class="v">${r.qtySent} ${mat?.unit||''}</div>
+      <div class="k">Already Received</div><div class="v">${r.qtyReceived} ${mat?.unit||''}</div>
+      <div class="k">Already Shortage</div><div class="v">${r.qtyShortage||0} ${mat?.unit||''}</div>
+      <div class="k">Still Pending</div><div class="v" style="font-weight:700;">${pending} ${mat?.unit||''}</div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Qty Received Now</label><input id="rcv_qty" type="number" min="0" max="${pending}" value="${pending}"></div>
+      <div class="field"><label>Shortage Qty (if any)</label><input id="rcv_short" type="number" min="0" value="0"></div>
+    </div>
+    <div class="field"><label>Shortage Reason (if applicable)</label>
+      <select id="rcv_reason">
+        <option value="">— None —</option>
+        <option value="Rejected by QC">Rejected by QC</option>
+        <option value="Lost in Process">Lost in Process</option>
+        <option value="Damaged in Transit">Damaged in Transit</option>
+        <option value="Other">Other</option>
+      </select>
+    </div>
+    <div class="field"><label>Remarks</label><textarea id="rcv_remarks" rows="2"></textarea></div>
+    <div class="section-note">Returned material is set to <b>Yellow — Under Inspection</b> automatically. Use "Mark Inspected" on the Tags page once checked, before it counts as available stock.</div>
+  `, `<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="confirmReceiveJobWork('${rcId}')">Confirm Receipt</button>`);
+}
+function confirmReceiveJobWork(rcId){
+  const r = DB.returnables.find(x=>x.id===rcId);
+  if(!r) return;
+  const pending = returnablePending(r);
+  const qtyNow = +val('rcv_qty')||0;
+  const shortageNow = +val('rcv_short')||0;
+  if(qtyNow<0 || shortageNow<0){ showToast('Quantities cannot be negative'); return; }
+  if(qtyNow + shortageNow <= 0){ showToast('Enter a received quantity or a shortage quantity'); return; }
+  if(qtyNow + shortageNow > pending){ showToast(`⚠ That's more than what's still pending (${pending} remaining)`); return; }
+  doReceiveJobWork(rcId, { qtyReceivedNow: qtyNow, shortageQty: shortageNow, shortageReason: val('rcv_reason'), remarks: val('rcv_remarks') });
+  saveDB(); closeModal();
+  const updated = DB.returnables.find(x=>x.id===rcId);
+  showToast(updated.status==='Closed' ? `${updated.rcNo} fully received — Closed` : `${updated.rcNo} partially received — ${returnablePending(updated)} still pending`);
+  navigate('returnable-register');
 }
 
 /* ================= STOCK AUDIT ================= */
