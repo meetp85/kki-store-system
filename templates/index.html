@@ -1284,6 +1284,7 @@ function renderInwardNew(main){
         </select></div>
         <div class="field"><label>Purchase Order No. (reference text)</label><input id="in_po" placeholder="PO-XXXX"></div>
       </div>
+      <div id="in_po_details" class="section-note" style="display:none;margin:-8px 0 12px;"></div>
       <div class="field-row">
         <div class="field"><label>Challan No. *</label><input id="in_challan" placeholder="CH-XXXX"></div>
       </div>
@@ -1321,11 +1322,33 @@ function populateInwardPOLink(){
   const supplierId = val('in_supplier');
   const openPOs = DB.purchaseOrders.filter(p=>p.status!=='Closed' && (!supplierId || p.supplierId===supplierId));
   sel.innerHTML = `<option value="">— None / not against a system PO —</option>` +
-    openPOs.map(p=>`<option value="${p.id}">${p.poNo} — ${supplierById(p.supplierId)?.name||''}</option>`).join('');
+    openPOs.map(p=>{
+      const summary = p.items.map(it=>{
+        const m = materialById(it.materialId);
+        const pending = Math.max(0, it.qty - it.receivedQty);
+        return `${m?m.name:'?'} (${pending} pending)`;
+      }).join(', ');
+      return `<option value="${p.id}">${p.poNo} — ${supplierById(p.supplierId)?.name||''} — ${summary}</option>`;
+    }).join('');
+  onInwardPOLinkChange();
 }
 function onInwardPOLinkChange(){
   const po = DB.purchaseOrders.find(p=>p.id===val('in_po_link'));
-  if(po) document.getElementById('in_po').value = po.poNo;
+  const box = document.getElementById('in_po_details');
+  if(po){
+    document.getElementById('in_po').value = po.poNo;
+    if(box){
+      box.style.display = '';
+      box.innerHTML = `<b>Items on ${po.poNo}:</b><br>` + po.items.map(it=>{
+        const m = materialById(it.materialId);
+        const pending = Math.max(0, it.qty - it.receivedQty);
+        return `${m?escapeHtml(m.name):'?'} — ordered ${it.qty}, received ${it.receivedQty}, <b>${pending} still pending</b>`;
+      }).join('<br>');
+    }
+  } else if(box){
+    box.style.display = 'none';
+    box.innerHTML = '';
+  }
 }
 function onInwardMaterialChange(){
   const mat = materialById(val('in_material'));
