@@ -1444,7 +1444,7 @@ function renderInwardRegister(main){
       <th>Date</th><th>Inward No.</th><th>Ident. No.</th><th>Party</th><th>Challan No.</th><th>Material</th>
       <th class="num">Qty</th><th>Status</th></tr></thead><tbody>
       ${DB.batches.length? DB.batches.slice().reverse().map(b=>{
-        const party = b.sourceType==='S' ? supplierById(b.supplierId)?.name : customerById(b.customerId)?.name;
+        const party = b.sourceType==='S' ? supplierById(b.supplierId)?.name : (b.sourceType==='P' ? 'Own Production' : customerById(b.customerId)?.name);
         return `<tr><td>${fmtDate(b.receivedDate)}</td><td class="mono">${b.inwardNo}</td>
           <td><span class="ident-badge">${b.identNo}</span></td><td>${escapeHtml(party||'—')}</td>
           <td>${escapeHtml(b.challanNo)}</td><td>${escapeHtml(materialById(b.materialId)?.name||'')}</td>
@@ -2300,7 +2300,7 @@ function renderQualityInspections(main){
         <th>Received</th><th>Drawing</th><th></th></tr></thead>
       <tbody>${pending.length? pending.map(b=>{
         const m = materialById(b.materialId);
-        const source = b.sourceType==='S' ? supplierById(b.supplierId)?.name : customerById(b.customerId)?.name;
+        const source = b.sourceType==='S' ? supplierById(b.supplierId)?.name : (b.sourceType==='P' ? 'Own Production' : customerById(b.customerId)?.name);
         const dwg = m ? drawingForMaterial(m.id) : null;
         return `<tr>
           <td><span class="ident-badge">${b.identNo}</span></td><td>${escapeHtml(m?m.name:'')}</td>
@@ -2412,23 +2412,66 @@ function updateProductionStatus(id, newStatus){
   notifyPush('Production Update', `${p.planNo} (${materialById(p.materialId)?.name||''}) — ${newStatus}`);
   renderProductionRegister(document.getElementById('main'));
 }
+function doProductionReceipt(plan, actualQty){
+  const date = todayISO();
+  const { identNo } = nextIdentificationNo(date, 'P');
+  DB.seq.batch++;
+  const batch = {
+    id:'batch_'+DB.seq.batch, identNo, grnNo:'', inwardNo:'',
+    materialId: plan.materialId, sourceType:'P', supplierId:'', customerId:'',
+    poNo:'', challanNo: plan.planNo, challanDate:date, receivedDate:date,
+    qtyReceived:actualQty, qtyRemaining:actualQty, locationId: materialById(plan.materialId)?.locationId||'',
+    inspectionStatus:'Pending Inspection', tag:'yellow', expiryDate:'', remarks:`Produced against ${plan.planNo}`
+  };
+  DB.batches.push(batch);
+  logTxn({date, materialId:plan.materialId, batchId:batch.id, type:'Production Receipt', ref:plan.planNo, qtyIn:0, remarks:`${actualQty} produced, pending inspection`});
+  return batch;
+}
 function openCompleteProduction(id){
   const p = DB.productionPlans.find(x=>x.id===id);
   if(!p) return;
   modal(`Complete — ${p.planNo}`, `
-    <div class="field"><label>Actual Quantity Produced</label><input id="pp_actual" type="number" min="0" value="${p.plannedQty}"></div>
-    <div class="section-note">Planned quantity was ${p.plannedQty}.</div>
+    <div class="field"><label>Actual Quantity Produced</label><input id="pp_actual" type="number" min="0" value="${p.plannedQty}" oninput="updateShortfallHint('${p.id}')"></div>
+    <div class="section-note">Planned quantity was ${p.plannedQty}. The Actual Quantity becomes new stock (pending Quality inspection, same as any other inward). If Actual is less than Planned, the difference is logged as Scrap so it's never silently lost.</div>
+    <div id="pp_shortfall_box" style="display:none;">
+      <div class="field"><label>Reason for shortfall</label>
+        <select id="pp_shortfall_reason">
+          <option value="Rejected by QC">Rejected by QC</option>
+          <option value="Rework Loss">Rework Loss</option>
+          <option value="Material Wastage">Material Wastage</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+    </div>
   `, `<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="confirmCompleteProduction('${id}')">Mark Completed</button>`);
+  updateShortfallHint(id);
+}
+function updateShortfallHint(id){
+  const p = DB.productionPlans.find(x=>x.id===id);
+  const box = document.getElementById('pp_shortfall_box');
+  if(!p || !box) return;
+  const actual = +val('pp_actual')||0;
+  box.style.display = actual < p.plannedQty ? '' : 'none';
 }
 function confirmCompleteProduction(id){
   const p = DB.productionPlans.find(x=>x.id===id);
   if(!p) return;
   const actual = +val('pp_actual')||0;
+  const shortfall = Math.max(0, p.plannedQty - actual);
   p.actualQty = actual;
   p.status = 'Completed';
+  let batch = null;
+  if(actual > 0){
+    batch = doProductionReceipt(p, actual);
+  }
+  if(shortfall > 0){
+    const reason = val('pp_shortfall_reason') || 'Other';
+    doScrap({ materialId: p.materialId, batchId: null, qty: shortfall, date: todayISO(),
+      reason: `Production shortfall (${reason}) — ${p.planNo}`, department:'Production', approvedBy:'', disposalMethod:'' });
+  }
   saveDB(); closeModal();
-  showToast(`${p.planNo}: Completed — ${actual} produced`);
-  notifyPush('Production Completed', `${p.planNo} (${materialById(p.materialId)?.name||''}) — ${actual} produced`);
+  showToast(`${p.planNo}: Completed — ${actual} produced${batch?` (${batch.identNo}, pending inspection)`:''}${shortfall?`, ${shortfall} logged as scrap`:''}`);
+  notifyPush('Production Completed', `${p.planNo} (${materialById(p.materialId)?.name||''}) — ${actual} produced${shortfall?`, ${shortfall} scrap`:''}`);
   renderProductionRegister(document.getElementById('main'));
 }
 
