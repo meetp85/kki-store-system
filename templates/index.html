@@ -2625,7 +2625,61 @@ function openBomView(id){
         return `<tr><td>${escapeHtml(cm?cm.name:'')}</td><td class="num">${c.qtyPerUnit}</td><td>${escapeHtml(c.unit)}</td></tr>`;
       }).join('')}</tbody></table>
     ${b.remarks?`<div style="margin-top:10px;font-size:12px;"><b>Remarks:</b> ${escapeHtml(b.remarks)}</div>`:''}
-  `, `<button class="btn ghost" onclick="closeModal()">Close</button>`);
+  `, `<button class="btn ghost" onclick="closeModal()">Close</button><button class="btn primary" onclick="closeModal();openBomEdit('${b.id}')">Edit</button>`);
+}
+function openBomEdit(id){
+  const b = DB.boms.find(x=>x.id===id);
+  if(!b) return;
+  modal(`Edit BOM — ${b.bomNo}`, `
+    <div class="section-note">Change the Parent Product if it was linked to the wrong material (e.g. a duplicate created during import), or adjust components/quantities.</div>
+    <div class="field"><label>Parent Product (Finished Item) *</label><select id="ebom_parent">${optionsFor(DB.materials,'id',m=>m.name)}</select></div>
+    <div class="field"><label>Components (per 1 unit of the parent)</label></div>
+    <div id="ebomItems" class="so-item-rows"></div>
+    <button class="btn ghost" onclick="addEbomRow()" style="margin-bottom:14px;">+ Add component</button>
+    <div class="field"><label>Remarks</label><textarea id="ebom_remarks" rows="2">${escapeHtml(b.remarks||'')}</textarea></div>
+  `, `<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="submitBomEdit('${id}')">Save Changes</button>`);
+  document.getElementById('ebom_parent').value = b.parentMaterialId;
+  const wrap = document.getElementById('ebomItems');
+  wrap.innerHTML = '';
+  b.components.forEach(c=>{
+    const row = document.createElement('div'); row.className='irow';
+    row.innerHTML = `<select class="ebom-mat">${optionsFor(DB.materials,'id',m=>m.name)}</select>
+      <input class="ebom-qty" type="number" min="0" step="0.001" value="${c.qtyPerUnit}">
+      <input class="ebom-unit" value="${escapeHtml(c.unit)}">
+      <span></span><span></span>
+      <button class="rm-row" onclick="this.parentElement.remove();">&times;</button>`;
+    wrap.appendChild(row);
+    row.querySelector('.ebom-mat').value = c.materialId;
+  });
+}
+function addEbomRow(){
+  const wrap = document.getElementById('ebomItems');
+  const row = document.createElement('div'); row.className='irow';
+  row.innerHTML = `<select class="ebom-mat">${optionsFor(DB.materials,'id',m=>m.name)}</select>
+    <input class="ebom-qty" type="number" min="0" step="0.001" placeholder="Qty per unit">
+    <input class="ebom-unit" placeholder="Unit (NOS/KG)" value="NOS">
+    <span></span><span></span>
+    <button class="rm-row" onclick="this.parentElement.remove();">&times;</button>`;
+  wrap.appendChild(row);
+}
+function submitBomEdit(id){
+  const b = DB.boms.find(x=>x.id===id);
+  if(!b) return;
+  const parentMaterialId = val('ebom_parent');
+  if(!parentMaterialId){ showToast('Select a parent product'); return; }
+  const components = [...document.querySelectorAll('#ebomItems .irow')].map(r=>({
+    materialId: r.querySelector('.ebom-mat').value,
+    qtyPerUnit: +r.querySelector('.ebom-qty').value || 0,
+    unit: r.querySelector('.ebom-unit').value || 'NOS'
+  })).filter(c=>c.materialId && c.qtyPerUnit>0);
+  if(!components.length){ showToast('Add at least one component with a quantity'); return; }
+  if(components.some(c=>c.materialId===parentMaterialId)){ showToast('A component cannot be the same as the parent product'); return; }
+  b.parentMaterialId = parentMaterialId;
+  b.components = components;
+  b.remarks = val('ebom_remarks');
+  saveDB(); closeModal();
+  showToast(`${b.bomNo} updated`);
+  renderBomRegister(document.getElementById('main'));
 }
 function ensureMaterialByName(name, unit){
   let m = DB.materials.find(x=>x.name.trim().toLowerCase()===name.trim().toLowerCase());
