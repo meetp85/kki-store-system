@@ -165,6 +165,10 @@
   .item-rows .irow:last-child{border-bottom:none;}
   .irow input, .irow select{padding:6px 8px; font-size:12.5px;}
   .rm-row{background:none; border:none; color:var(--danger); cursor:pointer; font-size:15px;}
+  .so-item-rows{border:1px solid var(--line); border-radius:8px; overflow:hidden; margin-bottom:8px;}
+  .so-item-rows .irow{display:grid; grid-template-columns:2fr .8fr .8fr .7fr .9fr 28px; gap:8px; padding:8px;
+    border-bottom:1px solid var(--line-soft); align-items:center;}
+  .so-item-rows .irow:last-child{border-bottom:none;}
 
   .search-bar{display:flex; gap:8px; margin-bottom:14px;}
   .search-bar input{flex:1; padding:8px 12px; border:1px solid var(--line); border-radius:7px; font-size:13px;}
@@ -266,8 +270,8 @@ function emptyDB(){
     materials: [], suppliers: [], customers: [], locations: [],
     batches: [], transactions: [],
     requisitions: [], issues: [], outwards: [], scraps: [], audits: [],
-    returnables: [],
-    seq: { material:0, supplier:0, customer:0, batch:0, inward:0, grn:0, req:0, issue:0, outward:0, scrap:0, audit:0, returnable:0 },
+    returnables: [], salesOrders: [],
+    seq: { material:0, supplier:0, customer:0, batch:0, inward:0, grn:0, req:0, issue:0, outward:0, scrap:0, audit:0, returnable:0, salesOrder:0 },
     identCounters: {},
     tagDefs: [
       {code:'green', label:'Green — Approved / Usable', desc:'Material inspected & accepted. Available for issue.'},
@@ -276,7 +280,7 @@ function emptyDB(){
       {code:'blue', label:'Blue — Supplier Material', desc:'Identifies material sourced from a supplier (per KKI coding system).'},
       {code:'white', label:'White — Customer Material', desc:'Identifies material supplied by / belonging to a customer.'}
     ],
-    settings:{ initialized:true, companyName:'K K INDUSTRIES', docRef:'KKI-QMS-06' }
+    settings:{ initialized:true, companyName:'K K INDUSTRIES', docRef:'KKI-QMS-06', gstin:'', stateName:'' }
   };
 }
 
@@ -415,7 +419,7 @@ function addMaterialRaw(o){
     locationId:o.locationId||'', status:'Active',
     extrusionNo:o.extrusionNo||'', rmSpec:o.rmSpec||'', lengthMm:o.lengthMm||'', widthMm:o.widthMm||'',
     cuttingLengthMm:o.cuttingLengthMm||'', rmWeightKg:o.rmWeightKg||'', totalCuttingLength:o.totalCuttingLength||'',
-    rmRequiredKg:o.rmRequiredKg||'', partNo:o.partNo||''
+    rmRequiredKg:o.rmRequiredKg||'', partNo:o.partNo||'', hsn:o.hsn||''
   };
   DB.materials.push(m); return m;
 }
@@ -475,6 +479,32 @@ function doIssue({requisitionId, items, issuedBy, date}){
   DB.issues.push(record);
   if(requisitionId){ const r=DB.requisitions.find(r=>r.id===requisitionId); if(r) r.status='Issued'; }
   return record;
+}
+
+function fmtMoney(n){ n = +n||0; return '₹' + n.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+
+/* ---------- Sales Order ---------- */
+function computeSOTotals(items){
+  let taxable = 0, gst = 0;
+  items.forEach(it=>{
+    const lineTaxable = (+it.qty||0) * (+it.rate||0);
+    const lineGst = lineTaxable * ((+it.gstPct||0)/100);
+    taxable += lineTaxable; gst += lineGst;
+  });
+  return { taxable, gst, grandTotal: taxable + gst };
+}
+function doCreateSalesOrder(o){
+  DB.seq.salesOrder++;
+  const soNo = uid('SO', DB.seq.salesOrder);
+  const totals = computeSOTotals(o.items);
+  const rec = {
+    id:'so_'+DB.seq.salesOrder, soNo, date:o.date||todayISO(), customerId:o.customerId,
+    customerPoNo:o.customerPoNo||'', deliveryDate:o.deliveryDate||'', paymentTerms:o.paymentTerms||'',
+    items:o.items, remarks:o.remarks||'', status:'Open',
+    taxable: totals.taxable, gst: totals.gst, grandTotal: totals.grandTotal
+  };
+  DB.salesOrders.push(rec);
+  return rec;
 }
 
 function doOutward(o){
@@ -553,6 +583,10 @@ function doReceiveJobWork(returnableId, o){
 /* ================= RENDER ENGINE ================= */
 const NAV = [
   {group:'', items:[ {id:'dashboard', label:'Dashboard', ic:'⌂'} ]},
+  {group:'Sales', items:[
+    {id:'salesorder-new', label:'New Sales Order', ic:'✎'},
+    {id:'salesorder-register', label:'Sales Order Register', ic:'≡'},
+  ]},
   {group:'Store', items:[
     {id:'materials', label:'Material Master', ic:'▤'},
     {id:'suppliers', label:'Suppliers', ic:'▣'},
@@ -660,6 +694,7 @@ function render(){
     'outward-new': renderOutwardNew, 'outward-register': renderOutwardRegister,
     'scrap-new': renderScrapNew, 'scrap-register': renderScrapRegister,
     'returnable-new': renderReturnableNew, 'returnable-register': renderReturnableRegister,
+    'salesorder-new': renderSalesOrderNew, 'salesorder-register': renderSalesOrderRegister,
     audit: renderAudit, traceability: renderTraceability, reports: renderReports, kpi: renderKPI,
   };
   (routes[ROUTE] || renderDashboard)(main);
@@ -941,6 +976,7 @@ function openMaterialForm(id){
     <div class="field"><label>Expiry / Shelf-life Tracking Applicable?</label>
       <div class="radio-group"><label><input type="radio" name="f_exp" value="1" ${(m&&m.expiryApplicable)?'checked':''}> Yes</label>
       <label><input type="radio" name="f_exp" value="0" ${(!m||!m.expiryApplicable)?'checked':''}> No</label></div></div>
+    <div class="field"><label>HSN Code (for Sales Order / GST)</label><input id="f_hsn" value="${m?escapeHtml(m.hsn||''):''}" placeholder="e.g. 8483"></div>
 
     <div class="panel-head" style="padding:10px 0 8px;border-top:1px solid var(--line);margin-top:6px;"><h3 style="font-size:13px;">Product / Extrusion Specification</h3></div>
     <div class="field-row">
@@ -969,7 +1005,7 @@ function saveMaterial(id){
     locationId: val('f_loc'), shelfLifeDays:+val('f_shelf')||0,
     fifoApplicable: document.querySelector('input[name=f_fifo]:checked').value==='1',
     expiryApplicable: document.querySelector('input[name=f_exp]:checked').value==='1',
-    extrusionNo: val('f_extno'), rmSpec: val('f_rmspec'), partNo: val('f_partno'),
+    extrusionNo: val('f_extno'), rmSpec: val('f_rmspec'), partNo: val('f_partno'), hsn: val('f_hsn'),
     lengthMm: val('f_len'), widthMm: val('f_wid'), cuttingLengthMm: val('f_cutlen'),
     rmWeightKg: val('f_rmwt'), totalCuttingLength: val('f_totcut'), rmRequiredKg: val('f_rmreq'),
   };
@@ -1050,11 +1086,11 @@ function renderCustomers(main){
   main.innerHTML = pageHead('Customers', 'Customer master for outward dispatch & delivery challans.',
     `<button class="btn primary" onclick="openCustomerForm()">+ Add Customer</button>`) +
     `<div class="panel"><div class="panel-body" style="padding:0;"><table><thead><tr>
-      <th>Code</th><th>Name</th><th>Address</th><th>Contact</th><th>Mobile</th><th></th></tr></thead>
+      <th>Code</th><th>Name</th><th>GSTIN</th><th>Address</th><th>Contact</th><th>Mobile</th><th></th></tr></thead>
       <tbody>${DB.customers.length? DB.customers.map(c=>`<tr><td class="mono">${c.code}</td><td><b>${escapeHtml(c.name)}</b></td>
-        <td>${escapeHtml(c.address)}</td><td>${escapeHtml(c.contact)}</td><td>${escapeHtml(c.mobile)}</td>
+        <td class="mono">${escapeHtml(c.gstin||'—')}</td><td>${escapeHtml(c.address)}</td><td>${escapeHtml(c.contact)}</td><td>${escapeHtml(c.mobile)}</td>
         <td><button class="icon-btn" onclick="openCustomerForm('${c.id}')">✎ Edit</button></td></tr>`).join('') :
-        `<tr class="empty-row"><td colspan="6">No customers yet.</td></tr>`}</tbody></table></div></div>`;
+        `<tr class="empty-row"><td colspan="7">No customers yet.</td></tr>`}</tbody></table></div></div>`;
 }
 function openCustomerForm(id){
   const c = id ? customerById(id) : null;
@@ -1064,13 +1100,14 @@ function openCustomerForm(id){
     <div class="field-row">
       <div class="field"><label>Contact Person</label><input id="f_contact" value="${c?escapeHtml(c.contact):''}"></div>
       <div class="field"><label>Mobile</label><input id="f_mobile" value="${c?escapeHtml(c.mobile):''}"></div>
-    </div>`,
+    </div>
+    <div class="field"><label>GSTIN</label><input id="f_gstin" value="${c?escapeHtml(c.gstin||''):''}" placeholder="e.g. 27AAAAA0000A1Z1"></div>`,
     `<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="saveCustomer('${id||''}')">Save</button>`);
 }
 function saveCustomer(id){
   const name = val('f_name').trim(); if(!name){ showToast('Name required'); return; }
-  const data = {name, address:val('f_addr'), contact:val('f_contact'), mobile:val('f_mobile')};
-  if(id) Object.assign(customerById(id), data); else addCustomerRaw(name,data.address,data.contact,data.mobile);
+  const data = {name, address:val('f_addr'), contact:val('f_contact'), mobile:val('f_mobile'), gstin:val('f_gstin')};
+  if(id) Object.assign(customerById(id), data); else { const c=addCustomerRaw(name,data.address,data.contact,data.mobile); c.gstin=data.gstin; }
   closeModal(); saveDB(); showToast('Customer saved'); renderCustomers(document.getElementById('main'));
 }
 
@@ -1760,6 +1797,145 @@ function confirmReceiveJobWork(rcId){
   const updated = DB.returnables.find(x=>x.id===rcId);
   showToast(updated.status==='Closed' ? `${updated.rcNo} fully received — Closed` : `${updated.rcNo} partially received — ${returnablePending(updated)} still pending`);
   navigate('returnable-register');
+}
+
+/* ================= SALES ORDER ================= */
+function renderSalesOrderNew(main){
+  main.innerHTML = pageHead('New Sales Order', 'Customer order — the starting point for Store, Purchase, Quality & Production.') + `
+    <div class="panel"><div class="panel-body">
+      <div class="field-row">
+        <div class="field"><label>Customer *</label><select id="so_cust" onchange="soUpdateCustomerInfo()">${optionsFor(DB.customers,'id',c=>c.name)}</select></div>
+        <div class="field"><label>Customer PO No.</label><input id="so_po"></div>
+      </div>
+      <div class="muted" id="so_gstin_hint" style="font-size:11.5px;margin:-8px 0 12px;"></div>
+      <div class="field-row">
+        <div class="field"><label>Order Date</label><input id="so_date" type="date" value="${todayISO()}"></div>
+        <div class="field"><label>Delivery Date</label><input id="so_delivery" type="date"></div>
+      </div>
+      <div class="field"><label>Payment Terms</label><input id="so_terms" placeholder="e.g. 30 days credit"></div>
+
+      <div class="field"><label>Items</label></div>
+      <div id="soItems" class="so-item-rows"></div>
+      <button class="btn ghost" onclick="addSoRow()" style="margin-bottom:14px;">+ Add material line</button>
+
+      <div id="soTotalsBox" style="background:var(--grey-tint);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:12.5px;"></div>
+
+      <div class="field"><label>Remarks</label><textarea id="so_remarks" rows="2"></textarea></div>
+      <button class="btn primary" onclick="submitSalesOrder()">Create Sales Order</button>
+    </div></div>`;
+  soUpdateCustomerInfo();
+  document.getElementById('soItems').innerHTML='';
+  addSoRow();
+}
+function addSoRow(){
+  const wrap = document.getElementById('soItems');
+  const row = document.createElement('div'); row.className='irow';
+  row.innerHTML = `<select class="so-mat" onchange="soRowMaterialChange(this)">${optionsFor(DB.materials,'id',m=>m.name)}</select>
+    <input class="so-qty" type="number" min="0" placeholder="Qty" oninput="soRecalc()">
+    <input class="so-rate" type="number" min="0" step="0.01" placeholder="Rate" oninput="soRecalc()">
+    <input class="so-gst" type="number" min="0" step="0.01" placeholder="GST %" value="18" oninput="soRecalc()">
+    <span class="muted so-hsn" style="font-size:11px;">HSN: —</span>
+    <button class="rm-row" onclick="this.parentElement.remove();soRecalc();">&times;</button>`;
+  wrap.appendChild(row);
+  soRowMaterialChange(row.querySelector('.so-mat'));
+  soRecalc();
+}
+function soRowMaterialChange(sel){
+  const row = sel.closest('.irow');
+  const m = materialById(sel.value);
+  row.querySelector('.so-hsn').textContent = 'HSN: ' + (m && m.hsn ? m.hsn : '—');
+}
+function soUpdateCustomerInfo(){
+  const cust = customerById(val('so_cust'));
+  const el = document.getElementById('so_gstin_hint');
+  if(el) el.textContent = cust ? `GSTIN: ${cust.gstin || 'not on file'}` : '';
+}
+function soReadItems(){
+  return [...document.querySelectorAll('#soItems .irow')].map(r=>({
+    materialId: r.querySelector('.so-mat').value,
+    qty: +r.querySelector('.so-qty').value || 0,
+    rate: +r.querySelector('.so-rate').value || 0,
+    gstPct: +r.querySelector('.so-gst').value || 0,
+  })).filter(it=>it.materialId && it.qty>0);
+}
+function soRecalc(){
+  const items = soReadItems();
+  const t = computeSOTotals(items);
+  const box = document.getElementById('soTotalsBox');
+  if(!box) return;
+  box.innerHTML = `
+    <div style="display:flex;justify-content:space-between;color:var(--ink-faint);"><span>Taxable Value</span><span>${fmtMoney(t.taxable)}</span></div>
+    <div style="display:flex;justify-content:space-between;color:var(--ink-faint);"><span>GST</span><span>${fmtMoney(t.gst)}</span></div>
+    <div style="display:flex;justify-content:space-between;font-weight:700;color:var(--ink);margin-top:4px;"><span>Grand Total</span><span>${fmtMoney(t.grandTotal)}</span></div>`;
+}
+function submitSalesOrder(){
+  const customerId = val('so_cust');
+  if(!customerId){ showToast('Select a customer'); return; }
+  const items = soReadItems();
+  if(!items.length){ showToast('Add at least one material line with quantity'); return; }
+  for(const it of items){
+    if(it.rate<=0){ showToast('Enter a Rate for every item line'); return; }
+  }
+  const rec = doCreateSalesOrder({
+    customerId, customerPoNo: val('so_po'), date: val('so_date'), deliveryDate: val('so_delivery'),
+    paymentTerms: val('so_terms'), remarks: val('so_remarks'), items
+  });
+  saveDB();
+  showToast(`Sales Order created — ${rec.soNo}`);
+  openSalesOrderView(rec.id);
+  navigate('salesorder-register');
+}
+function renderSalesOrderRegister(main){
+  main.innerHTML = pageHead('Sales Order Register', 'Every sales order raised, with customer, value & status.') +
+    `<div class="panel"><div class="panel-body" style="padding:0;"><table><thead><tr>
+      <th>SO No.</th><th>Date</th><th>Customer</th><th>Customer PO</th><th>Delivery Date</th>
+      <th class="num">Grand Total</th><th>Status</th><th></th></tr></thead>
+      <tbody>${DB.salesOrders.length? DB.salesOrders.slice().reverse().map(so=>{
+        const cust = customerById(so.customerId);
+        return `<tr>
+          <td class="mono">${so.soNo}</td><td>${fmtDate(so.date)}</td><td>${escapeHtml(cust?cust.name:'')}</td>
+          <td>${escapeHtml(so.customerPoNo||'—')}</td><td>${so.deliveryDate?fmtDate(so.deliveryDate):'—'}</td>
+          <td class="num">${fmtMoney(so.grandTotal)}</td>
+          <td><span class="pill issued">${so.status}</span></td>
+          <td><button class="link-btn" onclick="openSalesOrderView('${so.id}')">View / Print →</button></td>
+        </tr>`;
+      }).join('') : `<tr class="empty-row"><td colspan="8">No sales orders yet. <span class="link-btn" onclick="navigate('salesorder-new')">Create one</span></td></tr>`}</tbody></table>
+    </div></div>`;
+}
+function openSalesOrderView(id){
+  const so = DB.salesOrders.find(x=>x.id===id);
+  if(!so) return;
+  const cust = customerById(so.customerId);
+  modal('Sales Order', `
+    <div style="text-align:center;margin-bottom:6px;">
+      <div style="font-family:'IBM Plex Sans';font-weight:700;font-size:16px;">${escapeHtml(DB.settings.companyName)}</div>
+      ${DB.settings.gstin?`<div style="font-size:10.5px;color:var(--ink-faint);">GSTIN: ${escapeHtml(DB.settings.gstin)}</div>`:''}
+      <div style="font-size:11px;color:var(--ink-faint);letter-spacing:.1em;margin-top:3px;">SALES ORDER</div>
+    </div>
+    <div class="kv" style="margin-bottom:12px;">
+      <div class="k">SO No.</div><div class="v mono">${so.soNo}</div>
+      <div class="k">Order Date</div><div class="v">${fmtDate(so.date)}</div>
+      <div class="k">Customer</div><div class="v">${escapeHtml(cust?cust.name:'')}${cust&&cust.gstin?' · '+escapeHtml(cust.gstin):''}</div>
+      <div class="k">Customer PO No.</div><div class="v">${escapeHtml(so.customerPoNo||'—')}</div>
+      <div class="k">Delivery Date</div><div class="v">${so.deliveryDate?fmtDate(so.deliveryDate):'—'}</div>
+    </div>
+    <table><thead><tr><th>Material</th><th>HSN</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">GST%</th><th class="num">Amount</th></tr></thead>
+      <tbody>${so.items.map(it=>{
+        const m = materialById(it.materialId);
+        const lineTaxable = it.qty*it.rate;
+        const lineTotal = lineTaxable * (1+it.gstPct/100);
+        return `<tr><td>${escapeHtml(m?m.name:'')}</td><td class="mono">${escapeHtml(m&&m.hsn?m.hsn:'—')}</td>
+          <td class="num">${it.qty}</td><td class="num">${fmtMoney(it.rate)}</td><td class="num">${it.gstPct}%</td><td class="num">${fmtMoney(lineTotal)}</td></tr>`;
+      }).join('')}</tbody></table>
+    <div style="margin-top:10px;font-size:12.5px;">
+      <div style="display:flex;justify-content:space-between;color:var(--ink-faint);"><span>Taxable Value</span><span>${fmtMoney(so.taxable)}</span></div>
+      <div style="display:flex;justify-content:space-between;color:var(--ink-faint);"><span>CGST + SGST</span><span>${fmtMoney(so.gst)}</span></div>
+      <div style="display:flex;justify-content:space-between;font-weight:700;font-size:13.5px;margin-top:4px;border-top:1px solid var(--line);padding-top:6px;"><span>Grand Total</span><span>${fmtMoney(so.grandTotal)}</span></div>
+    </div>
+    ${so.paymentTerms?`<div style="margin-top:10px;font-size:12px;"><b>Payment Terms:</b> ${escapeHtml(so.paymentTerms)}</div>`:''}
+    ${so.remarks?`<div style="margin-top:6px;font-size:12px;"><b>Remarks:</b> ${escapeHtml(so.remarks)}</div>`:''}
+    <div style="margin-top:24px;font-size:12px;color:var(--ink-faint);">Authorized Signatory</div>
+  `, `<button class="btn ghost" onclick="closeModal()">Close</button><button class="btn primary" onclick="window.print()">🖨 Print</button>`);
 }
 
 /* ================= STOCK AUDIT ================= */
