@@ -271,8 +271,8 @@ function emptyDB(){
     materials: [], suppliers: [], customers: [], locations: [],
     batches: [], transactions: [],
     requisitions: [], issues: [], outwards: [], scraps: [], audits: [],
-    returnables: [], salesOrders: [],
-    seq: { material:0, supplier:0, customer:0, batch:0, inward:0, grn:0, req:0, issue:0, outward:0, scrap:0, audit:0, returnable:0, salesOrder:0 },
+    returnables: [], salesOrders: [], purchaseOrders: [],
+    seq: { material:0, supplier:0, customer:0, batch:0, inward:0, grn:0, req:0, issue:0, outward:0, scrap:0, audit:0, returnable:0, salesOrder:0, purchaseOrder:0 },
     identCounters: {},
     tagDefs: [
       {code:'green', label:'Green — Approved / Usable', desc:'Material inspected & accepted. Available for issue.'},
@@ -508,6 +508,36 @@ function doCreateSalesOrder(o){
   return rec;
 }
 
+/* ---------- Purchase Order ---------- */
+function doCreatePurchaseOrder(o){
+  DB.seq.purchaseOrder++;
+  const poNo = uid('PO', DB.seq.purchaseOrder);
+  const rec = {
+    id:'po_'+DB.seq.purchaseOrder, poNo, date:o.date||todayISO(), supplierId:o.supplierId,
+    linkedSalesOrderId:o.linkedSalesOrderId||'', expectedDeliveryDate:o.expectedDeliveryDate||'',
+    items: o.items.map(it=>({...it, receivedQty:0})), remarks:o.remarks||'', status:'Open'
+  };
+  DB.purchaseOrders.push(rec);
+  return rec;
+}
+function poPending(po){ return po.items.reduce((sum,it)=>sum+Math.max(0, it.qty-it.receivedQty), 0); }
+function recomputePOStatus(po){
+  const pending = poPending(po);
+  const totalReceived = po.items.reduce((s,it)=>s+it.receivedQty,0);
+  po.status = pending<=0 ? 'Closed' : (totalReceived>0 ? 'Partially Received' : 'Open');
+}
+/* Called from Inward when material is received "against" an open PO */
+function applyInwardToPO(poId, materialId, qty){
+  const po = DB.purchaseOrders.find(p=>p.id===poId);
+  if(!po) return null;
+  const line = po.items.find(it=>it.materialId===materialId && it.receivedQty<it.qty);
+  if(!line) return null;
+  const applied = Math.min(qty, line.qty - line.receivedQty);
+  line.receivedQty += applied;
+  recomputePOStatus(po);
+  return po;
+}
+
 function doOutward(o){
   DB.seq.outward++;
   const dcNo = uid('DC', DB.seq.outward);
@@ -588,6 +618,10 @@ const NAV = [
     {id:'salesorder-new', label:'New Sales Order', ic:'✎'},
     {id:'salesorder-register', label:'Sales Order Register', ic:'≡'},
   ]},
+  {group:'Purchase', items:[
+    {id:'purchaseorder-new', label:'New Purchase Order', ic:'✎'},
+    {id:'purchaseorder-register', label:'Purchase Order Register', ic:'≡', badgeKey:'poOverdue'},
+  ]},
   {group:'Store', items:[
     {id:'materials', label:'Material Master', ic:'▤'},
     {id:'suppliers', label:'Suppliers', ic:'▣'},
@@ -638,6 +672,7 @@ function badgeCounts(){
     expiry: DB.batches.filter(b=>b.expiryDate && b.tag==='green' && daysBetween(todayISO(), b.expiryDate) <= 7).length,
     pendingReq: DB.requisitions.filter(r=>r.status==='Pending').length,
     returnableOverdue: DB.returnables.filter(r=>r.status!=='Closed' && r.expectedReturnDate && daysBetween(todayISO(), r.expectedReturnDate) < 0).length,
+    poOverdue: DB.purchaseOrders.filter(p=>p.status!=='Closed' && p.expectedDeliveryDate && daysBetween(todayISO(), p.expectedDeliveryDate) < 0).length,
   };
 }
 
@@ -701,6 +736,7 @@ function render(){
     'scrap-new': renderScrapNew, 'scrap-register': renderScrapRegister,
     'returnable-new': renderReturnableNew, 'returnable-register': renderReturnableRegister,
     'salesorder-new': renderSalesOrderNew, 'salesorder-register': renderSalesOrderRegister,
+    'purchaseorder-new': renderPurchaseOrderNew, 'purchaseorder-register': renderPurchaseOrderRegister,
     audit: renderAudit, traceability: renderTraceability, reports: renderReports, kpi: renderKPI,
   };
   (routes[ROUTE] || renderDashboard)(main);
@@ -1204,10 +1240,15 @@ function renderInwardNew(main){
           <label><input type="radio" name="src" value="C" onchange="toggleInwardSource()"> Customer Material</label>
         </div>
       </div>
-      <div class="field" id="supField"><label>Supplier *</label><select id="in_supplier">${optionsFor(DB.suppliers,'id',s=>s.name)}</select></div>
+      <div class="field" id="supField"><label>Supplier *</label><select id="in_supplier" onchange="populateInwardPOLink()">${optionsFor(DB.suppliers,'id',s=>s.name)}</select></div>
       <div class="field" id="cusField" style="display:none;"><label>Customer *</label><select id="in_customer">${optionsFor(DB.customers,'id',c=>c.name)}</select></div>
       <div class="field-row">
-        <div class="field"><label>Purchase Order No.</label><input id="in_po" placeholder="PO-XXXX"></div>
+        <div class="field"><label>Against Purchase Order (optional)</label><select id="in_po_link" onchange="onInwardPOLinkChange()">
+          <option value="">— None / not against a system PO —</option>
+        </select></div>
+        <div class="field"><label>Purchase Order No. (reference text)</label><input id="in_po" placeholder="PO-XXXX"></div>
+      </div>
+      <div class="field-row">
         <div class="field"><label>Challan No. *</label><input id="in_challan" placeholder="CH-XXXX"></div>
       </div>
       <div class="field-row">
@@ -1230,11 +1271,25 @@ function renderInwardNew(main){
       <button class="btn primary" onclick="submitInward()">Save Inward &amp; Generate GRN</button>
     </div></div>`;
   onInwardMaterialChange();
+  populateInwardPOLink();
 }
 function toggleInwardSource(){
   const s = document.querySelector('input[name=src]:checked').value;
   document.getElementById('supField').style.display = s==='S' ? '' : 'none';
   document.getElementById('cusField').style.display = s==='C' ? '' : 'none';
+  populateInwardPOLink();
+}
+function populateInwardPOLink(){
+  const sel = document.getElementById('in_po_link');
+  if(!sel) return;
+  const supplierId = val('in_supplier');
+  const openPOs = DB.purchaseOrders.filter(p=>p.status!=='Closed' && (!supplierId || p.supplierId===supplierId));
+  sel.innerHTML = `<option value="">— None / not against a system PO —</option>` +
+    openPOs.map(p=>`<option value="${p.id}">${p.poNo} — ${supplierById(p.supplierId)?.name||''}</option>`).join('');
+}
+function onInwardPOLinkChange(){
+  const po = DB.purchaseOrders.find(p=>p.id===val('in_po_link'));
+  if(po) document.getElementById('in_po').value = po.poNo;
 }
 function onInwardMaterialChange(){
   const mat = materialById(val('in_material'));
@@ -1262,9 +1317,15 @@ function submitInward(){
     qty, locationId: val('in_loc'), inspectionStatus: document.querySelector('input[name=insp]:checked').value,
     remarks: val('in_remarks'), expiryDate: val('in_expiry')
   });
+  const poLinkId = val('in_po_link');
+  let poClosedMsg = '';
+  if(poLinkId){
+    const po = applyInwardToPO(poLinkId, materialId, qty);
+    if(po && po.status==='Closed') poClosedMsg = ` — ${po.poNo} is now fully received (Closed)`;
+  }
   saveDB();
   showInwardConfirmation(batch);
-  notifyPush('New Inward', `${materialById(materialId)?.name||'Material'} — ${qty} received (${batch.identNo})`);
+  notifyPush('New Inward', `${materialById(materialId)?.name||'Material'} — ${qty} received (${batch.identNo})${poClosedMsg}`);
 }
 function showInwardConfirmation(batch){
   const mat = materialById(batch.materialId);
@@ -1958,6 +2019,112 @@ function openSalesOrderView(id){
     ${so.paymentTerms?`<div style="margin-top:10px;font-size:12px;"><b>Payment Terms:</b> ${escapeHtml(so.paymentTerms)}</div>`:''}
     ${so.remarks?`<div style="margin-top:6px;font-size:12px;"><b>Remarks:</b> ${escapeHtml(so.remarks)}</div>`:''}
     <div style="margin-top:24px;font-size:12px;color:var(--ink-faint);">Authorized Signatory</div>
+  `, `<button class="btn ghost" onclick="closeModal()">Close</button><button class="btn primary" onclick="window.print()">🖨 Print</button>`);
+}
+
+/* ================= PURCHASE ORDER ================= */
+function renderPurchaseOrderNew(main){
+  const openSOs = DB.salesOrders.filter(so=>so.status!=='Closed');
+  main.innerHTML = pageHead('New Purchase Order', 'Order raw material from a supplier — e.g. to cover a shortfall flagged on a Sales Order.') + `
+    <div class="panel"><div class="panel-body">
+      <div class="field-row">
+        <div class="field"><label>Supplier *</label><select id="po_supplier">${optionsFor(DB.suppliers,'id',s=>s.name)}</select></div>
+        <div class="field"><label>Linked Sales Order (optional)</label><select id="po_so">
+          <option value="">— None —</option>
+          ${openSOs.map(so=>`<option value="${so.id}">${so.soNo} — ${escapeHtml(customerById(so.customerId)?.name||'')}</option>`).join('')}
+        </select></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>PO Date</label><input id="po_date" type="date" value="${todayISO()}"></div>
+        <div class="field"><label>Expected Delivery Date</label><input id="po_expected" type="date"></div>
+      </div>
+
+      <div class="field"><label>Items</label></div>
+      <div id="poItems" class="so-item-rows"></div>
+      <button class="btn ghost" onclick="addPoRow()" style="margin-bottom:14px;">+ Add material line</button>
+
+      <div class="field"><label>Remarks</label><textarea id="po_remarks" rows="2"></textarea></div>
+      <button class="btn primary" onclick="submitPurchaseOrder()">Create Purchase Order</button>
+    </div></div>`;
+  document.getElementById('poItems').innerHTML='';
+  addPoRow();
+}
+function addPoRow(){
+  const wrap = document.getElementById('poItems');
+  const row = document.createElement('div'); row.className='irow';
+  row.innerHTML = `<select class="po-mat">${optionsFor(DB.materials,'id',m=>m.name)}</select>
+    <input class="po-qty" type="number" min="0" placeholder="Qty">
+    <input class="po-rate" type="number" min="0" step="0.01" placeholder="Rate (optional)">
+    <span></span><span></span>
+    <button class="rm-row" onclick="this.parentElement.remove();">&times;</button>`;
+  wrap.appendChild(row);
+}
+function submitPurchaseOrder(){
+  const supplierId = val('po_supplier');
+  if(!supplierId){ showToast('Select a supplier'); return; }
+  const items = [...document.querySelectorAll('#poItems .irow')].map(r=>({
+    materialId: r.querySelector('.po-mat').value,
+    qty: +r.querySelector('.po-qty').value || 0,
+    rate: +r.querySelector('.po-rate').value || 0,
+  })).filter(it=>it.materialId && it.qty>0);
+  if(!items.length){ showToast('Add at least one material line with quantity'); return; }
+  const rec = doCreatePurchaseOrder({
+    supplierId, linkedSalesOrderId: val('po_so'), date: val('po_date'),
+    expectedDeliveryDate: val('po_expected'), remarks: val('po_remarks'), items
+  });
+  saveDB();
+  showToast(`Purchase Order created — ${rec.poNo}`);
+  notifyPush('New Purchase Order', `${rec.poNo} raised to ${supplierById(supplierId)?.name||'supplier'}`);
+  openPurchaseOrderView(rec.id);
+  navigate('purchaseorder-register');
+}
+function renderPurchaseOrderRegister(main){
+  main.innerHTML = pageHead('Purchase Order Register', 'Every purchase order raised to suppliers, with receipt status.') +
+    `<div class="panel"><div class="panel-body" style="padding:0;"><table><thead><tr>
+      <th>PO No.</th><th>Date</th><th>Supplier</th><th>Linked SO</th><th>Expected Delivery</th>
+      <th>Status</th><th></th></tr></thead>
+      <tbody>${DB.purchaseOrders.length? DB.purchaseOrders.slice().reverse().map(po=>{
+        const sup = supplierById(po.supplierId);
+        const linkedSO = po.linkedSalesOrderId ? DB.salesOrders.find(s=>s.id===po.linkedSalesOrderId) : null;
+        const overdue = po.status!=='Closed' && po.expectedDeliveryDate && daysBetween(todayISO(), po.expectedDeliveryDate) < 0;
+        const statusClass = po.status==='Closed' ? 'issued' : (po.status==='Partially Received' ? 'approved' : 'pending');
+        return `<tr>
+          <td class="mono">${po.poNo}</td><td>${fmtDate(po.date)}</td><td>${escapeHtml(sup?sup.name:'')}</td>
+          <td>${linkedSO?linkedSO.soNo:'—'}</td>
+          <td>${po.expectedDeliveryDate?fmtDate(po.expectedDeliveryDate):'—'}${overdue?` <span class="pill rejected">Overdue</span>`:''}</td>
+          <td><span class="pill ${statusClass}">${po.status}</span></td>
+          <td><button class="link-btn" onclick="openPurchaseOrderView('${po.id}')">View / Print →</button></td>
+        </tr>`;
+      }).join('') : `<tr class="empty-row"><td colspan="7">No purchase orders yet. <span class="link-btn" onclick="navigate('purchaseorder-new')">Create one</span></td></tr>`}</tbody></table>
+    </div></div>`;
+}
+function openPurchaseOrderView(id){
+  const po = DB.purchaseOrders.find(x=>x.id===id);
+  if(!po) return;
+  const sup = supplierById(po.supplierId);
+  const linkedSO = po.linkedSalesOrderId ? DB.salesOrders.find(s=>s.id===po.linkedSalesOrderId) : null;
+  modal('Purchase Order', `
+    <div style="text-align:center;margin-bottom:6px;">
+      <div style="font-family:'IBM Plex Sans';font-weight:700;font-size:16px;">${escapeHtml(DB.settings.companyName)}</div>
+      ${DB.settings.gstin?`<div style="font-size:10.5px;color:var(--ink-faint);">GSTIN: ${escapeHtml(DB.settings.gstin)}</div>`:''}
+      <div style="font-size:11px;color:var(--ink-faint);letter-spacing:.1em;margin-top:3px;">PURCHASE ORDER</div>
+    </div>
+    <div class="kv" style="margin-bottom:12px;">
+      <div class="k">PO No.</div><div class="v mono">${po.poNo}</div>
+      <div class="k">PO Date</div><div class="v">${fmtDate(po.date)}</div>
+      <div class="k">Supplier</div><div class="v">${escapeHtml(sup?sup.name:'')}${sup&&sup.gst?' · '+escapeHtml(sup.gst):''}</div>
+      ${linkedSO?`<div class="k">Linked Sales Order</div><div class="v">${linkedSO.soNo}</div>`:''}
+      <div class="k">Expected Delivery</div><div class="v">${po.expectedDeliveryDate?fmtDate(po.expectedDeliveryDate):'—'}</div>
+      <div class="k">Status</div><div class="v">${po.status}</div>
+    </div>
+    <table><thead><tr><th>Material</th><th class="num">Qty Ordered</th><th class="num">Rate</th><th class="num">Received</th><th class="num">Pending</th></tr></thead>
+      <tbody>${po.items.map(it=>{
+        const m = materialById(it.materialId);
+        return `<tr><td>${escapeHtml(m?m.name:'')}</td><td class="num">${it.qty}</td><td class="num">${it.rate?fmtMoney(it.rate):'—'}</td>
+          <td class="num">${it.receivedQty}</td><td class="num">${Math.max(0,it.qty-it.receivedQty)}</td></tr>`;
+      }).join('')}</tbody></table>
+    ${po.remarks?`<div style="margin-top:10px;font-size:12px;"><b>Remarks:</b> ${escapeHtml(po.remarks)}</div>`:''}
+    <div class="section-note" style="margin-top:14px;">Receive material against this PO from the New Inward screen — select this PO number there and stock/status updates automatically.</div>
   `, `<button class="btn ghost" onclick="closeModal()">Close</button><button class="btn primary" onclick="window.print()">🖨 Print</button>`);
 }
 
