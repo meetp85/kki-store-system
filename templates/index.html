@@ -271,8 +271,8 @@ function emptyDB(){
     materials: [], suppliers: [], customers: [], locations: [],
     batches: [], transactions: [],
     requisitions: [], issues: [], outwards: [], scraps: [], audits: [],
-    returnables: [], salesOrders: [], purchaseOrders: [], drawings: [],
-    seq: { material:0, supplier:0, customer:0, batch:0, inward:0, grn:0, req:0, issue:0, outward:0, scrap:0, audit:0, returnable:0, salesOrder:0, purchaseOrder:0, drawing:0 },
+    returnables: [], salesOrders: [], purchaseOrders: [], drawings: [], productionPlans: [],
+    seq: { material:0, supplier:0, customer:0, batch:0, inward:0, grn:0, req:0, issue:0, outward:0, scrap:0, audit:0, returnable:0, salesOrder:0, purchaseOrder:0, drawing:0, productionPlan:0 },
     identCounters: {},
     tagDefs: [
       {code:'green', label:'Green — Approved / Usable', desc:'Material inspected & accepted. Available for issue.'},
@@ -652,6 +652,10 @@ const NAV = [
     {id:'drawing-new', label:'New Drawing', ic:'✎'},
     {id:'drawing-register', label:'Drawings Register', ic:'≡'},
   ]},
+  {group:'Production', items:[
+    {id:'production-new', label:'New Production Plan', ic:'✎'},
+    {id:'production-register', label:'Production Plan Register', ic:'≡', badgeKey:'productionOverdue'},
+  ]},
   {group:'Store', items:[
     {id:'materials', label:'Material Master', ic:'▤'},
     {id:'suppliers', label:'Suppliers', ic:'▣'},
@@ -704,6 +708,7 @@ function badgeCounts(){
     returnableOverdue: DB.returnables.filter(r=>r.status!=='Closed' && r.expectedReturnDate && daysBetween(todayISO(), r.expectedReturnDate) < 0).length,
     poOverdue: DB.purchaseOrders.filter(p=>p.status!=='Closed' && p.expectedDeliveryDate && daysBetween(todayISO(), p.expectedDeliveryDate) < 0).length,
     pendingInspections: DB.batches.filter(b=>b.tag==='yellow').length,
+    productionOverdue: DB.productionPlans.filter(p=>p.status!=='Completed' && p.endDate && daysBetween(todayISO(), p.endDate) < 0).length,
   };
 }
 
@@ -770,6 +775,7 @@ function render(){
     'purchaseorder-new': renderPurchaseOrderNew, 'purchaseorder-register': renderPurchaseOrderRegister,
     'drawing-new': renderDrawingNew, 'drawing-register': renderDrawingRegister,
     'quality-inspections': renderQualityInspections,
+    'production-new': renderProductionNew, 'production-register': renderProductionRegister,
     audit: renderAudit, traceability: renderTraceability, reports: renderReports, kpi: renderKPI,
   };
   (routes[ROUTE] || renderDashboard)(main);
@@ -2240,6 +2246,114 @@ function renderQualityInspections(main){
         </tr>`;
       }).join('') : `<tr class="empty-row"><td colspan="7">Nothing pending inspection right now.</td></tr>`}</tbody></table>
     </div></div>`;
+}
+
+/* ================= PRODUCTION PLAN ================= */
+function doCreateProductionPlan(o){
+  DB.seq.productionPlan++;
+  const planNo = uid('PP', DB.seq.productionPlan);
+  const rec = {
+    id:'pp_'+DB.seq.productionPlan, planNo, materialId:o.materialId, linkedSalesOrderId:o.linkedSalesOrderId||'',
+    plannedQty:+o.plannedQty, actualQty:0, startDate:o.startDate||'', endDate:o.endDate||'',
+    machineLine:o.machineLine||'', remarks:o.remarks||'', status:'Not Started', createdDate: todayISO()
+  };
+  DB.productionPlans.push(rec);
+  return rec;
+}
+function renderProductionNew(main){
+  const openSOs = DB.salesOrders.filter(so=>so.status!=='Closed');
+  main.innerHTML = pageHead('New Production Plan', 'Schedule production for a material — quantity, dates, machine/line.') + `
+    <div class="panel"><div class="panel-body">
+      <div class="field-row">
+        <div class="field"><label>Material *</label><select id="pp_mat">${optionsFor(DB.materials,'id',m=>m.name)}</select></div>
+        <div class="field"><label>Linked Sales Order (optional)</label><select id="pp_so">
+          <option value="">— None —</option>
+          ${openSOs.map(so=>`<option value="${so.id}">${so.soNo} — ${escapeHtml(customerById(so.customerId)?.name||'')}</option>`).join('')}
+        </select></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Planned Quantity *</label><input id="pp_qty" type="number" min="0"></div>
+        <div class="field"><label>Machine / Line</label><input id="pp_machine" placeholder="e.g. Line 2, CNC-04"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Start Date</label><input id="pp_start" type="date" value="${todayISO()}"></div>
+        <div class="field"><label>Target End Date</label><input id="pp_end" type="date"></div>
+      </div>
+      <div class="field"><label>Remarks</label><textarea id="pp_remarks" rows="2"></textarea></div>
+      <button class="btn primary" onclick="submitProductionPlan()">Create Production Plan</button>
+    </div></div>`;
+}
+function submitProductionPlan(){
+  const materialId = val('pp_mat');
+  const qty = +val('pp_qty');
+  if(!materialId){ showToast('Select a material'); return; }
+  if(!qty || qty<=0){ showToast('Enter a valid planned quantity'); return; }
+  const rec = doCreateProductionPlan({
+    materialId, linkedSalesOrderId: val('pp_so'), plannedQty: qty, machineLine: val('pp_machine'),
+    startDate: val('pp_start'), endDate: val('pp_end'), remarks: val('pp_remarks')
+  });
+  saveDB();
+  showToast(`Production Plan created — ${rec.planNo}`);
+  notifyPush('New Production Plan', `${rec.planNo} — ${materialById(materialId)?.name||''} (${qty})`);
+  navigate('production-register');
+}
+function renderProductionRegister(main){
+  main.innerHTML = pageHead('Production Plan Register', 'Every production plan, with status and machine/line assignment.') +
+    `<div class="panel"><div class="panel-body" style="padding:0;"><table><thead><tr>
+      <th>Plan No.</th><th>Material</th><th>Linked SO</th><th class="num">Planned Qty</th><th class="num">Actual Qty</th>
+      <th>Machine/Line</th><th>Start</th><th>Target End</th><th>Status</th><th></th></tr></thead>
+      <tbody>${DB.productionPlans.length? DB.productionPlans.slice().reverse().map(p=>{
+        const m = materialById(p.materialId);
+        const linkedSO = p.linkedSalesOrderId ? DB.salesOrders.find(s=>s.id===p.linkedSalesOrderId) : null;
+        const overdue = p.status!=='Completed' && p.endDate && daysBetween(todayISO(), p.endDate) < 0;
+        const statusClass = p.status==='Completed' ? 'issued' : (p.status==='In Progress' ? 'approved' : (p.status==='On Hold' ? 'rejected' : 'pending'));
+        return `<tr>
+          <td class="mono">${p.planNo}</td><td>${escapeHtml(m?m.name:'')}</td><td>${linkedSO?linkedSO.soNo:'—'}</td>
+          <td class="num">${p.plannedQty}</td><td class="num">${p.actualQty||'—'}</td>
+          <td>${escapeHtml(p.machineLine||'—')}</td><td>${p.startDate?fmtDate(p.startDate):'—'}</td>
+          <td>${p.endDate?fmtDate(p.endDate):'—'}${overdue?` <span class="pill rejected">Overdue</span>`:''}</td>
+          <td><span class="pill ${statusClass}">${p.status}</span></td>
+          <td>${productionActionsHtml(p)}</td>
+        </tr>`;
+      }).join('') : `<tr class="empty-row"><td colspan="10">No production plans yet. <span class="link-btn" onclick="navigate('production-new')">Create one</span></td></tr>`}</tbody></table>
+    </div></div>`;
+}
+function productionActionsHtml(p){
+  if(p.status==='Completed') return '—';
+  const opts = [];
+  if(p.status==='Not Started') opts.push(`<button class="link-btn" onclick="updateProductionStatus('${p.id}','In Progress')">Start →</button>`);
+  if(p.status==='In Progress') opts.push(`<button class="link-btn" onclick="openCompleteProduction('${p.id}')">Complete →</button>`);
+  if(p.status!=='On Hold') opts.push(`<button class="link-btn" style="color:var(--danger);" onclick="updateProductionStatus('${p.id}','On Hold')">Hold</button>`);
+  else opts.push(`<button class="link-btn" onclick="updateProductionStatus('${p.id}','In Progress')">Resume</button>`);
+  return opts.join(' · ');
+}
+function updateProductionStatus(id, newStatus){
+  const p = DB.productionPlans.find(x=>x.id===id);
+  if(!p) return;
+  p.status = newStatus;
+  saveDB();
+  showToast(`${p.planNo}: ${newStatus}`);
+  notifyPush('Production Update', `${p.planNo} (${materialById(p.materialId)?.name||''}) — ${newStatus}`);
+  renderProductionRegister(document.getElementById('main'));
+}
+function openCompleteProduction(id){
+  const p = DB.productionPlans.find(x=>x.id===id);
+  if(!p) return;
+  modal(`Complete — ${p.planNo}`, `
+    <div class="field"><label>Actual Quantity Produced</label><input id="pp_actual" type="number" min="0" value="${p.plannedQty}"></div>
+    <div class="section-note">Planned quantity was ${p.plannedQty}.</div>
+  `, `<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="confirmCompleteProduction('${id}')">Mark Completed</button>`);
+}
+function confirmCompleteProduction(id){
+  const p = DB.productionPlans.find(x=>x.id===id);
+  if(!p) return;
+  const actual = +val('pp_actual')||0;
+  p.actualQty = actual;
+  p.status = 'Completed';
+  saveDB(); closeModal();
+  showToast(`${p.planNo}: Completed — ${actual} produced`);
+  notifyPush('Production Completed', `${p.planNo} (${materialById(p.materialId)?.name||''}) — ${actual} produced`);
+  renderProductionRegister(document.getElementById('main'));
 }
 
 /* ================= STOCK AUDIT ================= */
