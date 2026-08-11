@@ -648,6 +648,7 @@ const NAV = [
     {id:'purchaseorder-register', label:'Purchase Order Register', ic:'≡', badgeKey:'poOverdue'},
   ]},
   {group:'Quality', items:[
+    {id:'quality-inspections', label:'Pending Inspections', ic:'✓', badgeKey:'pendingInspections'},
     {id:'drawing-new', label:'New Drawing', ic:'✎'},
     {id:'drawing-register', label:'Drawings Register', ic:'≡'},
   ]},
@@ -702,6 +703,7 @@ function badgeCounts(){
     pendingReq: DB.requisitions.filter(r=>r.status==='Pending').length,
     returnableOverdue: DB.returnables.filter(r=>r.status!=='Closed' && r.expectedReturnDate && daysBetween(todayISO(), r.expectedReturnDate) < 0).length,
     poOverdue: DB.purchaseOrders.filter(p=>p.status!=='Closed' && p.expectedDeliveryDate && daysBetween(todayISO(), p.expectedDeliveryDate) < 0).length,
+    pendingInspections: DB.batches.filter(b=>b.tag==='yellow').length,
   };
 }
 
@@ -767,6 +769,7 @@ function render(){
     'salesorder-new': renderSalesOrderNew, 'salesorder-register': renderSalesOrderRegister,
     'purchaseorder-new': renderPurchaseOrderNew, 'purchaseorder-register': renderPurchaseOrderRegister,
     'drawing-new': renderDrawingNew, 'drawing-register': renderDrawingRegister,
+    'quality-inspections': renderQualityInspections,
     audit: renderAudit, traceability: renderTraceability, reports: renderReports, kpi: renderKPI,
   };
   (routes[ROUTE] || renderDashboard)(main);
@@ -1220,8 +1223,8 @@ function saveLocation(){
 
 /* ================= TAGS ================= */
 function renderTags(main){
-  main.innerHTML = pageHead('Tag Management', 'Per KKI-QMS-06 §Responsibility: Store Incharge issues White, Yellow, Red, Green & Blue tags.') +
-    `<div class="section-note">The manual lists these five tag colours without fixing exact meanings — the definitions below are configurable defaults for your review. Materials tagged <b>Red</b> are automatically blocked from Issue and Outward. Materials tagged anything other than <b>Green</b> are not counted as available stock.</div>
+  main.innerHTML = pageHead('Tag Management', 'Per KKI-QMS-06 §Responsibility: reference for the 5-color tagging system.') +
+    `<div class="section-note">The manual lists these five tag colours without fixing exact meanings — the definitions below are configurable defaults for your review. Materials tagged <b>Red</b> are automatically blocked from Issue and Outward. Materials tagged anything other than <b>Green</b> are not counted as available stock. To approve/reject a batch under inspection, go to <span class="link-btn" onclick="navigate('quality-inspections')">Quality → Pending Inspections</span>.</div>
     <div class="grid cards2">
     ${DB.tagDefs.map(t=>`<div class="card"><div class="tag ${t.code}" style="margin-bottom:8px;"><span class="dot ${t.code}"></span>${t.label}</div>
       <div class="muted" style="font-size:12.5px;">${t.desc}</div></div>`).join('')}
@@ -1229,16 +1232,11 @@ function renderTags(main){
     <div class="panel" style="margin-top:16px;">
       <div class="panel-head"><h3>Batches by Tag</h3></div>
       <div class="panel-body" style="padding:0;">
-        <table><thead><tr><th>Identification No.</th><th>Material</th><th>Tag</th><th class="num">Qty Remaining</th><th>Received</th><th>Update Tag</th></tr></thead>
+        <table><thead><tr><th>Identification No.</th><th>Material</th><th>Tag</th><th class="num">Qty Remaining</th><th>Received</th></tr></thead>
         <tbody>${DB.batches.length? DB.batches.slice().reverse().map(b=>`<tr>
           <td><span class="ident-badge">${b.identNo}</span></td><td>${escapeHtml(materialById(b.materialId)?.name||'')}</td>
-          <td>${tagPill(b.tag)}</td><td class="num">${b.qtyRemaining}</td><td>${fmtDate(b.receivedDate)}</td>
-          <td>${b.tag==='yellow'?`<button class="btn sm primary" onclick="changeBatchTag('${b.id}','green')">✓ Mark Inspected</button>`:''}
-              <select class="filter" onchange="changeBatchTag('${b.id}', this.value)" style="margin-left:6px;">
-                <option value="">Change to…</option>
-                ${DB.tagDefs.filter(t=>t.code!==b.tag).map(t=>`<option value="${t.code}">${t.label}</option>`).join('')}
-              </select></td></tr>`).join('') :
-          `<tr class="empty-row"><td colspan="6">No batches yet.</td></tr>`}</tbody></table>
+          <td>${tagPill(b.tag)}</td><td class="num">${b.qtyRemaining}</td><td>${fmtDate(b.receivedDate)}</td></tr>`).join('') :
+          `<tr class="empty-row"><td colspan="5">No batches yet.</td></tr>`}</tbody></table>
       </div>
     </div>`;
 }
@@ -1258,7 +1256,7 @@ function changeBatchTag(batchId, newTag){
   const label = newTag==='green' ? 'marked Inspected (Green) — now available as stock' : `tag changed to ${newTag}`;
   showToast(`${b.identNo}: ${label}`);
   notifyPush('Tag Updated', `${b.identNo} (${materialById(b.materialId)?.name||''}) — ${label}`);
-  renderTags(document.getElementById('main'));
+  render();
 }
 
 /* ================= INWARD ================= */
@@ -2217,6 +2215,31 @@ function renderDrawingRegister(main){
 }
 function drawingForMaterial(materialId){
   return DB.drawings.find(d=>d.materialId===materialId) || null;
+}
+
+function renderQualityInspections(main){
+  const pending = DB.batches.filter(b=>b.tag==='yellow').slice().reverse();
+  main.innerHTML = pageHead('Pending Inspections', 'Material awaiting Quality review before it counts as usable stock.') +
+    `<div class="panel"><div class="panel-body" style="padding:0;">
+      <table><thead><tr>
+        <th>Identification No.</th><th>Material</th><th>Source</th><th class="num">Qty</th>
+        <th>Received</th><th>Drawing</th><th></th></tr></thead>
+      <tbody>${pending.length? pending.map(b=>{
+        const m = materialById(b.materialId);
+        const source = b.sourceType==='S' ? supplierById(b.supplierId)?.name : customerById(b.customerId)?.name;
+        const dwg = m ? drawingForMaterial(m.id) : null;
+        return `<tr>
+          <td><span class="ident-badge">${b.identNo}</span></td><td>${escapeHtml(m?m.name:'')}</td>
+          <td>${escapeHtml(source||'—')}</td><td class="num">${b.qtyRemaining} ${m?m.unit:''}</td>
+          <td>${fmtDate(b.receivedDate)}</td>
+          <td>${dwg ? `${escapeHtml(dwg.drawingNo)}${dwg.fileId?` — <a href="/api/file/${dwg.fileId}" target="_blank">📄 View</a>`:''}` : '<span class="muted">No drawing</span>'}</td>
+          <td>
+            <button class="btn sm primary" onclick="changeBatchTag('${b.id}','green')">✓ Approve</button>
+            <button class="btn sm ghost" style="color:var(--danger);" onclick="changeBatchTag('${b.id}','red')">✗ Reject</button>
+          </td>
+        </tr>`;
+      }).join('') : `<tr class="empty-row"><td colspan="7">Nothing pending inspection right now.</td></tr>`}</tbody></table>
+    </div></div>`;
 }
 
 /* ================= STOCK AUDIT ================= */
