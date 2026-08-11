@@ -510,6 +510,18 @@ function doIssue({requisitionId, items, issuedBy, date}){
 function fmtMoney(n){ n = +n||0; return '₹' + n.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2}); }
 
 /* ---------- Sales Order ---------- */
+function soItemSummary(so){
+  return so.items.map(it=>{
+    const m = materialById(it.materialId);
+    return `${m?m.name:'?'} (${it.qty})`;
+  }).join(', ');
+}
+function soDetailsHtml(so){
+  return `<b>Items on ${so.soNo}:</b><br>` + so.items.map(it=>{
+    const m = materialById(it.materialId);
+    return `${m?escapeHtml(m.name):'?'} — Qty ${it.qty}, Rate ${fmtMoney(it.rate)}`;
+  }).join('<br>');
+}
 function computeSOTotals(items){
   let taxable = 0, gst = 0;
   items.forEach(it=>{
@@ -2113,11 +2125,12 @@ function renderPurchaseOrderNew(main){
     <div class="panel"><div class="panel-body">
       <div class="field-row">
         <div class="field"><label>Supplier *</label><select id="po_supplier">${optionsFor(DB.suppliers,'id',s=>s.name)}</select></div>
-        <div class="field"><label>Linked Sales Order (optional)</label><select id="po_so">
+        <div class="field"><label>Linked Sales Order (optional)</label><select id="po_so" onchange="onPOSOLinkChange()">
           <option value="">— None —</option>
-          ${openSOs.map(so=>`<option value="${so.id}">${so.soNo} — ${escapeHtml(customerById(so.customerId)?.name||'')}</option>`).join('')}
+          ${openSOs.map(so=>`<option value="${so.id}">${so.soNo} — ${escapeHtml(customerById(so.customerId)?.name||'')} — ${escapeHtml(soItemSummary(so))}</option>`).join('')}
         </select></div>
       </div>
+      <div id="po_so_details" class="section-note" style="display:none;margin:-8px 0 12px;"></div>
       <div class="field-row">
         <div class="field"><label>PO Date</label><input id="po_date" type="date" value="${todayISO()}"></div>
         <div class="field"><label>Expected Delivery Date</label><input id="po_expected" type="date"></div>
@@ -2132,6 +2145,13 @@ function renderPurchaseOrderNew(main){
     </div></div>`;
   document.getElementById('poItems').innerHTML='';
   addPoRow();
+}
+function onPOSOLinkChange(){
+  const so = DB.salesOrders.find(s=>s.id===val('po_so'));
+  const box = document.getElementById('po_so_details');
+  if(!box) return;
+  if(so){ box.style.display=''; box.innerHTML = soDetailsHtml(so); }
+  else { box.style.display='none'; box.innerHTML=''; }
 }
 function addPoRow(){
   const wrap = document.getElementById('poItems');
@@ -2314,11 +2334,12 @@ function renderProductionNew(main){
     <div class="panel"><div class="panel-body">
       <div class="field-row">
         <div class="field"><label>Material *</label><select id="pp_mat">${optionsFor(DB.materials,'id',m=>m.name)}</select></div>
-        <div class="field"><label>Linked Sales Order (optional)</label><select id="pp_so">
+        <div class="field"><label>Linked Sales Order (optional)</label><select id="pp_so" onchange="onProductionSOLinkChange()">
           <option value="">— None —</option>
-          ${openSOs.map(so=>`<option value="${so.id}">${so.soNo} — ${escapeHtml(customerById(so.customerId)?.name||'')}</option>`).join('')}
+          ${openSOs.map(so=>`<option value="${so.id}">${so.soNo} — ${escapeHtml(customerById(so.customerId)?.name||'')} — ${escapeHtml(soItemSummary(so))}</option>`).join('')}
         </select></div>
       </div>
+      <div id="pp_so_details" class="section-note" style="display:none;margin:-8px 0 12px;"></div>
       <div class="field-row">
         <div class="field"><label>Planned Quantity *</label><input id="pp_qty" type="number" min="0"></div>
         <div class="field"><label>Machine / Line</label><input id="pp_machine" placeholder="e.g. Line 2, CNC-04"></div>
@@ -2330,6 +2351,13 @@ function renderProductionNew(main){
       <div class="field"><label>Remarks</label><textarea id="pp_remarks" rows="2"></textarea></div>
       <button class="btn primary" onclick="submitProductionPlan()">Create Production Plan</button>
     </div></div>`;
+}
+function onProductionSOLinkChange(){
+  const so = DB.salesOrders.find(s=>s.id===val('pp_so'));
+  const box = document.getElementById('pp_so_details');
+  if(!box) return;
+  if(so){ box.style.display=''; box.innerHTML = soDetailsHtml(so); }
+  else { box.style.display='none'; box.innerHTML=''; }
 }
 function submitProductionPlan(){
   const materialId = val('pp_mat');
