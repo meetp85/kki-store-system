@@ -3,3 +3,4 @@ PyMySQL==1.1.1
 gunicorn==22.0.0
 Werkzeug==3.0.3
 cryptography==42.0.8
+pywebpush==2.0.1

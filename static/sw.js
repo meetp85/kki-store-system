@@ -17,3 +17,31 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   event.respondWith(fetch(event.request));
 });
+
+// Show a real OS-level notification when a push arrives, even if the app
+// isn't open. The server sends {title, body} as JSON in the push payload.
+self.addEventListener('push', (event) => {
+  let data = { title: 'KKI Stores', body: 'Something changed in the store.' };
+  try { if (event.data) data = event.data.json(); } catch (e) {}
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: '/static/icon-192.png',
+      badge: '/static/icon-192.png',
+      tag: 'kki-update',
+    })
+  );
+});
+
+// Tapping the notification opens the app (or focuses it if already open).
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if ('focus' in client) return client.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow('/');
+    })
+  );
+});

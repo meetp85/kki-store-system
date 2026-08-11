@@ -165,6 +165,7 @@
   .item-rows .irow:last-child{border-bottom:none;}
   .irow input, .irow select{padding:6px 8px; font-size:12.5px;}
   .rm-row{background:none; border:none; color:var(--danger); cursor:pointer; font-size:15px;}
+  #notifBellBtn.active-bell{background:rgba(184,134,11,.15); color:var(--accent) !important; border-color:var(--accent) !important;}
   .so-item-rows{border:1px solid var(--line); border-radius:8px; overflow:hidden; margin-bottom:8px;}
   .so-item-rows .irow{display:grid; grid-template-columns:2fr .8fr .8fr .7fr .9fr 28px; gap:8px; padding:8px;
     border-bottom:1px solid var(--line-soft); align-items:center;}
@@ -657,8 +658,13 @@ function renderSidebar(){
       html += `<div class="nav-item${active}" onclick="navigate('${it.id}')"><span class="ic">${it.ic}</span>${it.label}${badge}</div>`;
     });
   });
-  html += `</nav><div class="sidebar-foot">Store & Sales SOP<br>KKI-QMS-06 · Rev 02${CURRENT_USER?`<div style="margin-top:8px;padding-top:8px;border-top:1px solid #232833;">Signed in: <b>${escapeHtml(CURRENT_USER)}</b><br><a href="#" onclick="doLogout();return false;" style="color:var(--sidebar-ink-dim);">Sign out</a></div>`:''}</div>`;
+  html += `</nav>
+    <div style="padding:0 16px 10px;">
+      <button id="notifBellBtn" class="btn ghost" style="width:100%;font-size:11.5px;padding:8px;color:#c7cad1;border-color:#2a2f3a;" onclick="toggleNotifications()">🔕 Enable Notifications</button>
+    </div>
+    <div class="sidebar-foot">Store & Sales SOP<br>KKI-QMS-06 · Rev 02${CURRENT_USER?`<div style="margin-top:8px;padding-top:8px;border-top:1px solid #232833;">Signed in: <b>${escapeHtml(CURRENT_USER)}</b><br><a href="#" onclick="doLogout();return false;" style="color:var(--sidebar-ink-dim);">Sign out</a></div>`:''}</div>`;
   document.getElementById('sidebar').innerHTML = html;
+  updateNotifBellUI();
 }
 
 function navigate(route, sub){ ROUTE = route; ROUTE_SUB = sub||null; render(); closeMobileSidebar(); }
@@ -1183,6 +1189,7 @@ function changeBatchTag(batchId, newTag){
   saveDB();
   const label = newTag==='green' ? 'marked Inspected (Green) — now available as stock' : `tag changed to ${newTag}`;
   showToast(`${b.identNo}: ${label}`);
+  notifyPush('Tag Updated', `${b.identNo} (${materialById(b.materialId)?.name||''}) — ${label}`);
   renderTags(document.getElementById('main'));
 }
 
@@ -1257,6 +1264,7 @@ function submitInward(){
   });
   saveDB();
   showInwardConfirmation(batch);
+  notifyPush('New Inward', `${materialById(materialId)?.name||'Material'} — ${qty} received (${batch.identNo})`);
 }
 function showInwardConfirmation(batch){
   const mat = materialById(batch.materialId);
@@ -1497,6 +1505,7 @@ function confirmIssue(reqId){
   const rec = doIssue({ requisitionId:reqId, items: r.items, issuedBy: val('iss_by'), date: todayISO() });
   saveDB(); closeModal();
   showToast(`Issued — ${rec.issueNo}`);
+  notifyPush('Material Issued', `${rec.issueNo} issued to ${r.department||'Production'}`);
   navigate('issues');
 }
 function renderIssues(main){
@@ -1577,6 +1586,8 @@ function submitOutward(){
     destination: val('ow_dest'), remarks: val('ow_remarks'), items });
   saveDB();
   openDeliveryChallan(rec.id);
+  const custName = customerById(val('ow_customer'))?.name || 'customer';
+  notifyPush('Material Dispatched', `${rec.dcNo} dispatched to ${custName}`);
 }
 function renderOutwardRegister(main){
   main.innerHTML = pageHead('Outward Material Register', 'Format No. KKI/STR/REC/05.',
@@ -1653,7 +1664,9 @@ function submitScrap(){
   if(!qty||qty<=0){ showToast('Enter a valid quantity'); return; }
   const rec = doScrap({ materialId, batchId: val('sc_batch')||null, qty, date: val('sc_date'), reason: val('sc_reason'),
     department: val('sc_dept'), approvedBy: val('sc_appr'), disposalMethod: val('sc_disp') });
-  saveDB(); showToast(`Scrap entry saved — ${rec.scrapNo}`); navigate('scrap-register');
+  saveDB(); showToast(`Scrap entry saved — ${rec.scrapNo}`);
+  notifyPush('Scrap Recorded', `${rec.scrapNo} — ${qty} ${materialById(materialId)?.unit||''} of ${materialById(materialId)?.name||'material'} (${val('sc_reason')})`);
+  navigate('scrap-register');
 }
 function renderScrapRegister(main){
   const monthly = {};
@@ -1723,6 +1736,7 @@ function submitReturnable(){
   });
   saveDB();
   showToast(`Sent for job work — ${rec.rcNo}`);
+  notifyPush('Sent for Job Work', `${rec.rcNo} — ${qty} ${materialById(materialId)?.unit||''} of ${materialById(materialId)?.name||''} sent to ${supplierById(supplierId)?.name||'job worker'}`);
   navigate('returnable-register');
 }
 function renderReturnableRegister(main){
@@ -1796,6 +1810,7 @@ function confirmReceiveJobWork(rcId){
   saveDB(); closeModal();
   const updated = DB.returnables.find(x=>x.id===rcId);
   showToast(updated.status==='Closed' ? `${updated.rcNo} fully received — Closed` : `${updated.rcNo} partially received — ${returnablePending(updated)} still pending`);
+  notifyPush('Job Work Received', `${updated.rcNo} — ${qtyNow} received back${shortageNow?`, ${shortageNow} shortage`:''} (${updated.status})`);
   navigate('returnable-register');
 }
 
@@ -1815,6 +1830,7 @@ function renderSalesOrderNew(main){
       <div class="field"><label>Payment Terms</label><input id="so_terms" placeholder="e.g. 30 days credit"></div>
 
       <div class="field"><label>Items</label></div>
+      <div class="muted" style="font-size:11px;margin:-4px 0 8px;">Availability shown per line — a shortfall does not block the order (Purchase will action it), it's just a heads-up.</div>
       <div id="soItems" class="so-item-rows"></div>
       <button class="btn ghost" onclick="addSoRow()" style="margin-bottom:14px;">+ Add material line</button>
 
@@ -1831,10 +1847,10 @@ function addSoRow(){
   const wrap = document.getElementById('soItems');
   const row = document.createElement('div'); row.className='irow';
   row.innerHTML = `<select class="so-mat" onchange="soRowMaterialChange(this)">${optionsFor(DB.materials,'id',m=>m.name)}</select>
-    <input class="so-qty" type="number" min="0" placeholder="Qty" oninput="soRecalc()">
+    <input class="so-qty" type="number" min="0" placeholder="Qty" oninput="soRowMaterialChange(this.closest('.irow').querySelector('.so-mat'));soRecalc();">
     <input class="so-rate" type="number" min="0" step="0.01" placeholder="Rate" oninput="soRecalc()">
     <input class="so-gst" type="number" min="0" step="0.01" placeholder="GST %" value="18" oninput="soRecalc()">
-    <span class="muted so-hsn" style="font-size:11px;">HSN: —</span>
+    <span class="muted so-hsn" style="font-size:10.5px;line-height:1.5;"></span>
     <button class="rm-row" onclick="this.parentElement.remove();soRecalc();">&times;</button>`;
   wrap.appendChild(row);
   soRowMaterialChange(row.querySelector('.so-mat'));
@@ -1843,7 +1859,13 @@ function addSoRow(){
 function soRowMaterialChange(sel){
   const row = sel.closest('.irow');
   const m = materialById(sel.value);
-  row.querySelector('.so-hsn').textContent = 'HSN: ' + (m && m.hsn ? m.hsn : '—');
+  const qty = +row.querySelector('.so-qty').value || 0;
+  const avail = sel.value ? currentStock(sel.value) : 0;
+  const short = qty > avail;
+  const hsnLine = 'HSN: ' + (m && m.hsn ? m.hsn : '—');
+  const availLine = sel.value ? `Available: ${avail} ${m?m.unit:''}` : '';
+  const el = row.querySelector('.so-hsn');
+  el.innerHTML = `${hsnLine}<br><span style="color:${short?'var(--danger)':'var(--ink-faint)'};font-weight:${short?'700':'400'};">${availLine}${short?' ⚠':''}</span>`;
 }
 function soUpdateCustomerInfo(){
   const cust = customerById(val('so_cust'));
@@ -1882,6 +1904,7 @@ function submitSalesOrder(){
   });
   saveDB();
   showToast(`Sales Order created — ${rec.soNo}`);
+  notifyPush('New Sales Order', `${rec.soNo} — ${customerById(customerId)?.name||'customer'} — ${fmtMoney(rec.grandTotal)}`);
   openSalesOrderView(rec.id);
   navigate('salesorder-register');
 }
@@ -2212,11 +2235,88 @@ function enterLiveMonitoring(){
   await checkSessionAndBoot();
 })();
 
-/* Register service worker (enables "Add to Home Screen" install) */
+/* Register service worker (enables "Add to Home Screen" install + push) */
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     navigator.serviceWorker.register('/static/sw.js').catch(e=>console.error('SW registration failed', e));
   });
+}
+
+/* ================= PUSH NOTIFICATIONS ================= */
+function urlBase64ToUint8Array(base64String){
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for(let i=0; i<rawData.length; i++) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
+}
+function pushSupported(){
+  return 'serviceWorker' in navigator && 'PushManager' in window;
+}
+async function isPushSubscribed(){
+  if(!pushSupported()) return false;
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  return !!sub;
+}
+async function enablePushNotifications(){
+  if(!pushSupported()){ showToast('Push notifications are not supported in this browser'); return; }
+  try{
+    const perm = await Notification.requestPermission();
+    if(perm !== 'granted'){ showToast('Notifications permission was not granted'); return; }
+    const keyRes = await fetch('/api/push/vapid-public-key');
+    const { key } = await keyRes.json();
+    if(!key){ showToast('Push is not configured on the server yet'); return; }
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(key)
+    });
+    await fetch('/api/push/subscribe', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(sub)
+    });
+    showToast('Notifications enabled on this device');
+    updateNotifBellUI();
+  }catch(e){
+    console.error('Push subscribe failed', e);
+    showToast('Could not enable notifications — see console for details');
+  }
+}
+async function disablePushNotifications(){
+  try{
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if(sub){
+      await fetch('/api/push/unsubscribe', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ endpoint: sub.endpoint })
+      });
+      await sub.unsubscribe();
+    }
+    showToast('Notifications turned off on this device');
+    updateNotifBellUI();
+  }catch(e){ console.error('Push unsubscribe failed', e); }
+}
+async function toggleNotifications(){
+  if(await isPushSubscribed()) await disablePushNotifications();
+  else await enablePushNotifications();
+}
+async function updateNotifBellUI(){
+  const btn = document.getElementById('notifBellBtn');
+  if(!btn) return;
+  const on = await isPushSubscribed();
+  btn.textContent = on ? '🔔 Notifications On' : '🔕 Enable Notifications';
+  btn.classList.toggle('active-bell', on);
+}
+/* Fire-and-forget: tells the server to push this to every subscribed device.
+   Called right after any stock-affecting action. Never blocks the UI on failure. */
+function notifyPush(title, body){
+  fetch('/api/push/send', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ title, body })
+  }).catch(e=>console.error('Push send failed', e));
 }
 </script>
 </body>

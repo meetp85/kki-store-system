@@ -1,4 +1,5 @@
 import os
+import json
 from datetime import timedelta
 
 import pymysql
@@ -14,6 +15,10 @@ app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=os.environ.get("FLASK_ENV") == "production",
 )
+
+VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "")
+VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
+VAPID_CLAIM_EMAIL = os.environ.get("VAPID_CLAIM_EMAIL", "mailto:admin@example.com")
 
 
 def get_conn():
@@ -32,7 +37,7 @@ def get_conn():
 
 
 def init_db():
-    """Create the two tables we need if they don't exist yet. Safe to run every boot."""
+    """Create the tables we need if they don't exist yet. Safe to run every boot."""
     conn = get_conn()
     try:
         with conn.cursor() as cur:
@@ -48,6 +53,16 @@ def init_db():
                     id INT PRIMARY KEY,
                     data LONGTEXT,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                )"""
+            )
+            cur.execute(
+                """CREATE TABLE IF NOT EXISTS push_subscriptions (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    endpoint VARCHAR(600) UNIQUE NOT NULL,
+                    p256dh VARCHAR(255) NOT NULL,
+                    auth VARCHAR(255) NOT NULL,
+                    username VARCHAR(100),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )"""
             )
     finally:
@@ -135,8 +150,109 @@ def save_state():
     return jsonify({"ok": True})
 
 
+# ---------- Push notifications ----------
+@app.route("/api/push/vapid-public-key")
+def push_public_key():
+    if not require_login():
+        return jsonify({"error": "unauthorized"}), 401
+    return jsonify({"key": VAPID_PUBLIC_KEY})
+
+
+@app.route("/api/push/subscribe", methods=["POST"])
+def push_subscribe():
+    if not require_login():
+        return jsonify({"error": "unauthorized"}), 401
+    body = request.get_json(force=True) or {}
+    endpoint = body.get("endpoint", "")
+    keys = body.get("keys", {})
+    p256dh = keys.get("p256dh", "")
+    auth = keys.get("auth", "")
+    if not endpoint or not p256dh or not auth:
+        return jsonify({"ok": False, "error": "incomplete subscription"}), 400
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO push_subscriptions (endpoint, p256dh, auth, username) VALUES (%s,%s,%s,%s)
+                   ON DUPLICATE KEY UPDATE p256dh=%s, auth=%s, username=%s""",
+                (endpoint, p256dh, auth, session.get("username"), p256dh, auth, session.get("username")),
+            )
+    finally:
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/push/unsubscribe", methods=["POST"])
+def push_unsubscribe():
+    if not require_login():
+        return jsonify({"error": "unauthorized"}), 401
+    body = request.get_json(force=True) or {}
+    endpoint = body.get("endpoint", "")
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM push_subscriptions WHERE endpoint=%s", (endpoint,))
+    finally:
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/push/send", methods=["POST"])
+def push_send():
+    """Broadcasts a notification to every subscribed device. Called by the
+    frontend right after any stock-affecting action (Inward, Issue, Outward,
+    Scrap, Tag change, Sales Order, Returnable Challan)."""
+    if not require_login():
+        return jsonify({"error": "unauthorized"}), 401
+    if not VAPID_PRIVATE_KEY:
+        return jsonify({"ok": False, "error": "push not configured on server"}), 200
+
+    body = request.get_json(force=True) or {}
+    title = body.get("title", "KKI Stores")
+    message = body.get("body", "")
+
+    try:
+        from pywebpush import webpush, WebPushException
+    except ImportError:
+        return jsonify({"ok": False, "error": "pywebpush not installed"}), 200
+
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM push_subscriptions")
+            subs = cur.fetchall()
+
+        sent, expired = 0, []
+        for sub in subs:
+            subscription_info = {
+                "endpoint": sub["endpoint"],
+                "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]},
+            }
+            try:
+                webpush(
+                    subscription_info=subscription_info,
+                    data=json.dumps({"title": title, "body": message}),
+                    vapid_private_key=VAPID_PRIVATE_KEY,
+                    vapid_claims={"sub": VAPID_CLAIM_EMAIL},
+                )
+                sent += 1
+            except WebPushException as e:
+                status = getattr(e.response, "status_code", None)
+                if status in (404, 410):
+                    expired.append(sub["endpoint"])
+
+        if expired:
+            with conn.cursor() as cur:
+                cur.executemany("DELETE FROM push_subscriptions WHERE endpoint=%s", [(e,) for e in expired])
+    finally:
+        conn.close()
+
+    return jsonify({"ok": True, "sent": sent})
+
+
 # Create tables on startup (both local `python app.py` and Render/gunicorn boot)
 init_db()
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
+
