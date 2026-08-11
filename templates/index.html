@@ -271,8 +271,8 @@ function emptyDB(){
     materials: [], suppliers: [], customers: [], locations: [],
     batches: [], transactions: [],
     requisitions: [], issues: [], outwards: [], scraps: [], audits: [],
-    returnables: [], salesOrders: [], purchaseOrders: [],
-    seq: { material:0, supplier:0, customer:0, batch:0, inward:0, grn:0, req:0, issue:0, outward:0, scrap:0, audit:0, returnable:0, salesOrder:0, purchaseOrder:0 },
+    returnables: [], salesOrders: [], purchaseOrders: [], drawings: [],
+    seq: { material:0, supplier:0, customer:0, batch:0, inward:0, grn:0, req:0, issue:0, outward:0, scrap:0, audit:0, returnable:0, salesOrder:0, purchaseOrder:0, drawing:0 },
     identCounters: {},
     tagDefs: [
       {code:'green', label:'Green — Approved / Usable', desc:'Material inspected & accepted. Available for issue.'},
@@ -326,6 +326,31 @@ async function saveDB(){
     });
     if(!res.ok) throw new Error('save failed: '+res.status);
   }catch(e){ console.error('Storage save failed', e); showToast('⚠ Could not save — check your connection'); }
+}
+
+/* Uploads a File object to the server, returns the new file's id (or null on failure/no file). */
+function readFileAsBase64(file){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = ()=> resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+async function uploadFileToServer(file){
+  if(!file) return null;
+  const MAX_BYTES = 9*1024*1024;
+  if(file.size > MAX_BYTES){ showToast('File too large — max ~9MB'); return null; }
+  try{
+    const base64 = await readFileAsBase64(file);
+    const res = await fetch('/api/upload', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ filename: file.name, mimetype: file.type, data: base64 })
+    });
+    const j = await res.json();
+    if(!res.ok || !j.ok){ showToast('⚠ File upload failed'); return null; }
+    return j.id;
+  }catch(e){ console.error('Upload failed', e); showToast('⚠ File upload failed'); return null; }
 }
 
 /* ---------- Seed a bit of realistic demo data so the system is not empty on first run ---------- */
@@ -622,6 +647,10 @@ const NAV = [
     {id:'purchaseorder-new', label:'New Purchase Order', ic:'✎'},
     {id:'purchaseorder-register', label:'Purchase Order Register', ic:'≡', badgeKey:'poOverdue'},
   ]},
+  {group:'Quality', items:[
+    {id:'drawing-new', label:'New Drawing', ic:'✎'},
+    {id:'drawing-register', label:'Drawings Register', ic:'≡'},
+  ]},
   {group:'Store', items:[
     {id:'materials', label:'Material Master', ic:'▤'},
     {id:'suppliers', label:'Suppliers', ic:'▣'},
@@ -737,6 +766,7 @@ function render(){
     'returnable-new': renderReturnableNew, 'returnable-register': renderReturnableRegister,
     'salesorder-new': renderSalesOrderNew, 'salesorder-register': renderSalesOrderRegister,
     'purchaseorder-new': renderPurchaseOrderNew, 'purchaseorder-register': renderPurchaseOrderRegister,
+    'drawing-new': renderDrawingNew, 'drawing-register': renderDrawingRegister,
     audit: renderAudit, traceability: renderTraceability, reports: renderReports, kpi: renderKPI,
   };
   (routes[ROUTE] || renderDashboard)(main);
@@ -1060,6 +1090,7 @@ function viewMaterialSpec(id){
   const m = materialById(id);
   if(!m) return;
   const sup = supplierById(m.supplierId);
+  const dwg = drawingForMaterial(id);
   modal('Product Specification — '+m.name, `
     <div class="kv">
       <div class="k">Material Code</div><div class="v mono">${m.code}</div>
@@ -1072,6 +1103,7 @@ function viewMaterialSpec(id){
       <div class="k">Total Cutting Length</div><div class="v">${m.totalCuttingLength||'—'}</div>
       <div class="k">RM Weight</div><div class="v">${m.rmWeightKg||'—'} kg</div>
       <div class="k">RM Required</div><div class="v">${m.rmRequiredKg||'—'} kg</div>
+      <div class="k">Quality Drawing</div><div class="v">${dwg ? `${escapeHtml(dwg.drawingNo)}${dwg.fileId?` — <a href="/api/file/${dwg.fileId}" target="_blank">📄 View file</a>`:''}` : '—'}</div>
     </div>
   `, `<button class="btn ghost" onclick="closeModal()">Close</button><button class="btn primary" onclick="closeModal();openMaterialForm('${m.id}')">Edit</button>`);
 }
@@ -2126,6 +2158,65 @@ function openPurchaseOrderView(id){
     ${po.remarks?`<div style="margin-top:10px;font-size:12px;"><b>Remarks:</b> ${escapeHtml(po.remarks)}</div>`:''}
     <div class="section-note" style="margin-top:14px;">Receive material against this PO from the New Inward screen — select this PO number there and stock/status updates automatically.</div>
   `, `<button class="btn ghost" onclick="closeModal()">Close</button><button class="btn primary" onclick="window.print()">🖨 Print</button>`);
+}
+
+/* ================= QUALITY — DRAWINGS ================= */
+function doCreateDrawing(o){
+  DB.seq.drawing++;
+  const rec = {
+    id:'dwg_'+DB.seq.drawing, drawingNo:o.drawingNo, materialId:o.materialId||'',
+    fileId:o.fileId||null, fileName:o.fileName||'', remarks:o.remarks||'', date: todayISO()
+  };
+  DB.drawings.push(rec);
+  return rec;
+}
+function renderDrawingNew(main){
+  main.innerHTml='';
+  main.innerHTML = pageHead('New Drawing', 'Reference drawing for Quality to check the product against.') + `
+    <div class="panel"><div class="panel-body">
+      <div class="field"><label>Drawing Number *</label><input id="dwg_no" placeholder="e.g. DWG-OM-014 Rev 2"></div>
+      <div class="field"><label>Material</label><select id="dwg_mat"><option value="">— Not linked to a specific material —</option>${optionsFor(DB.materials,'id',m=>m.name)}</select></div>
+      <div class="field"><label>Drawing File (optional — PDF or image, max ~9MB)</label><input id="dwg_file" type="file" accept="application/pdf,image/*"></div>
+      <div class="field"><label>Remarks</label><textarea id="dwg_remarks" rows="2"></textarea></div>
+      <button class="btn primary" id="dwg_submit_btn" onclick="submitDrawing()">Save Drawing</button>
+    </div></div>`;
+}
+async function submitDrawing(){
+  const drawingNo = val('dwg_no').trim();
+  if(!drawingNo){ showToast('Enter a Drawing Number'); return; }
+  const btn = document.getElementById('dwg_submit_btn');
+  const fileInput = document.getElementById('dwg_file');
+  const file = fileInput.files[0] || null;
+  btn.disabled = true; btn.textContent = file ? 'Uploading…' : 'Saving…';
+  let fileId = null;
+  if(file){
+    fileId = await uploadFileToServer(file);
+    if(fileId===null && file){ btn.disabled=false; btn.textContent='Save Drawing'; return; }
+  }
+  const rec = doCreateDrawing({
+    drawingNo, materialId: val('dwg_mat'), fileId, fileName: file?file.name:'', remarks: val('dwg_remarks')
+  });
+  saveDB();
+  showToast(`Drawing saved — ${rec.drawingNo}`);
+  notifyPush('New Drawing Added', `${rec.drawingNo}${rec.materialId?' — '+(materialById(rec.materialId)?.name||''):''}`);
+  navigate('drawing-register');
+}
+function renderDrawingRegister(main){
+  main.innerHTML = pageHead('Drawings Register', 'Reference drawings, linked to materials where applicable.') +
+    `<div class="panel"><div class="panel-body" style="padding:0;"><table><thead><tr>
+      <th>Drawing No.</th><th>Material</th><th>File</th><th>Date</th><th>Remarks</th></tr></thead>
+      <tbody>${DB.drawings.length? DB.drawings.slice().reverse().map(d=>{
+        const m = d.materialId ? materialById(d.materialId) : null;
+        return `<tr>
+          <td class="mono">${escapeHtml(d.drawingNo)}</td><td>${m?escapeHtml(m.name):'—'}</td>
+          <td>${d.fileId?`<a href="/api/file/${d.fileId}" target="_blank" class="link-btn">📄 ${escapeHtml(d.fileName||'View file')}</a>`:'—'}</td>
+          <td>${fmtDate(d.date)}</td><td>${escapeHtml(d.remarks||'—')}</td>
+        </tr>`;
+      }).join('') : `<tr class="empty-row"><td colspan="5">No drawings yet. <span class="link-btn" onclick="navigate('drawing-new')">Add one</span></td></tr>`}</tbody></table>
+    </div></div>`;
+}
+function drawingForMaterial(materialId){
+  return DB.drawings.find(d=>d.materialId===materialId) || null;
 }
 
 /* ================= STOCK AUDIT ================= */

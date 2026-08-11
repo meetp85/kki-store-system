@@ -1,9 +1,10 @@
 import os
 import json
+import base64
 from datetime import timedelta
 
 import pymysql
-from flask import Flask, request, jsonify, session, render_template
+from flask import Flask, request, jsonify, session, render_template, Response
 from werkzeug.security import check_password_hash
 
 app = Flask(__name__)
@@ -62,6 +63,16 @@ def init_db():
                     p256dh VARCHAR(255) NOT NULL,
                     auth VARCHAR(255) NOT NULL,
                     username VARCHAR(100),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )"""
+            )
+            cur.execute(
+                """CREATE TABLE IF NOT EXISTS files (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    filename VARCHAR(255),
+                    mimetype VARCHAR(100),
+                    data LONGTEXT,
+                    uploaded_by VARCHAR(100),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )"""
             )
@@ -148,6 +159,57 @@ def save_state():
     finally:
         conn.close()
     return jsonify({"ok": True})
+
+
+# ---------- File uploads (Quality drawings, etc.) ----------
+MAX_FILE_B64_CHARS = 12_000_000  # roughly ~9MB of actual file data
+
+
+@app.route("/api/upload", methods=["POST"])
+def upload_file():
+    if not require_login():
+        return jsonify({"error": "unauthorized"}), 401
+    body = request.get_json(force=True) or {}
+    filename = (body.get("filename") or "file")[:255]
+    mimetype = (body.get("mimetype") or "application/octet-stream")[:100]
+    data = body.get("data", "")
+    if not data:
+        return jsonify({"ok": False, "error": "no file data"}), 400
+    if len(data) > MAX_FILE_B64_CHARS:
+        return jsonify({"ok": False, "error": "file too large (max ~9MB)"}), 400
+
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO files (filename, mimetype, data, uploaded_by) VALUES (%s,%s,%s,%s)",
+                (filename, mimetype, data, session.get("username")),
+            )
+            file_id = cur.lastrowid
+    finally:
+        conn.close()
+    return jsonify({"ok": True, "id": file_id})
+
+
+@app.route("/api/file/<int:file_id>")
+def get_file(file_id):
+    if not require_login():
+        return jsonify({"error": "unauthorized"}), 401
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM files WHERE id=%s", (file_id,))
+            row = cur.fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return jsonify({"error": "not found"}), 404
+    raw = base64.b64decode(row["data"])
+    return Response(
+        raw,
+        mimetype=row["mimetype"],
+        headers={"Content-Disposition": f'inline; filename="{row["filename"]}"'},
+    )
 
 
 # ---------- Push notifications ----------
