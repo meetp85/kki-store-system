@@ -1289,7 +1289,7 @@ function renderInwardNew(main){
       </div>
       <div class="field-row">
         <div class="field"><label>Challan Date *</label><input id="in_date" type="date" value="${todayISO()}"></div>
-        <div class="field"><label>Material *</label><select id="in_material" onchange="onInwardMaterialChange()">${matOpts}</select></div>
+        <div class="field"><label>Material * <span class="link-btn" style="font-size:11px;margin-left:6px;" onclick="openQuickAddMaterial()">+ New Material</span></label><select id="in_material" onchange="onInwardMaterialChange()">${matOpts}</select></div>
       </div>
       <div class="field-row">
         <div class="field"><label>Quantity *</label><input id="in_qty" type="number" min="0"></div>
@@ -1336,6 +1336,31 @@ function onInwardMaterialChange(){
     document.getElementById('in_expiry').value = d.toISOString().slice(0,10);
   }
   if(mat && mat.locationId) document.getElementById('in_loc').value = mat.locationId;
+}
+function openQuickAddMaterial(){
+  modal('Quick Add Material', `
+    <div class="section-note">Just the essentials — you can add full extrusion specs, HSN, etc. later from Material Master.</div>
+    <div class="field"><label>Material Name *</label><input id="qa_name"></div>
+    <div class="field-row">
+      <div class="field"><label>Category</label><input id="qa_cat" value="Raw Material"></div>
+      <div class="field"><label>Unit</label><input id="qa_unit" value="PCS"></div>
+    </div>
+    <div class="field"><label>Supplier</label><select id="qa_supplier"><option value="">— None —</option>${optionsFor(DB.suppliers,'id',s=>s.name)}</select></div>
+  `, `<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="submitQuickAddMaterial()">Add & Use This Material</button>`);
+}
+function submitQuickAddMaterial(){
+  const name = val('qa_name').trim();
+  if(!name){ showToast('Enter a material name'); return; }
+  const m = addMaterialRaw({ name, category: val('qa_cat')||'Raw Material', unit: val('qa_unit')||'PCS', supplierId: val('qa_supplier') });
+  saveDB();
+  closeModal();
+  showToast(`Material added — ${m.name} (${m.code})`);
+  const sel = document.getElementById('in_material');
+  if(sel){
+    sel.innerHTML = optionsFor(DB.materials,'id',mm=>`${mm.name} (${mm.code})`);
+    sel.value = m.id;
+    onInwardMaterialChange();
+  }
 }
 function submitInward(){
   const sourceType = document.querySelector('input[name=src]:checked').value;
