@@ -2009,7 +2009,7 @@ function renderSalesOrderNew(main){
 function addSoRow(){
   const wrap = document.getElementById('soItems');
   const row = document.createElement('div'); row.className='irow';
-  row.innerHTML = `<select class="so-mat" onchange="soRowMaterialChange(this)">${optionsFor(DB.materials,'id',m=>m.name)}</select>
+  row.innerHTML = `<select class="so-mat" onchange="soRowMaterialChange(this);soRecalc();">${optionsFor(DB.materials,'id',m=>m.name)}</select>
     <input class="so-qty" type="number" min="0" placeholder="Qty" oninput="soRowMaterialChange(this.closest('.irow').querySelector('.so-mat'));soRecalc();">
     <input class="so-rate" type="number" min="0" step="0.01" placeholder="Rate" oninput="soRecalc()">
     <input class="so-gst" type="number" min="0" step="0.01" placeholder="GST %" value="18" oninput="soRecalc()">
