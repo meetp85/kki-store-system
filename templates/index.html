@@ -2009,7 +2009,7 @@ function renderSalesOrderNew(main){
 function addSoRow(){
   const wrap = document.getElementById('soItems');
   const row = document.createElement('div'); row.className='irow';
-  row.innerHTML = `<select class="so-mat" onchange="soRowMaterialChange(this);soRecalc();">${optionsFor(DB.materials,'id',m=>m.name)}</select>
+  row.innerHTML = `<select class="so-mat" onchange="soRowMaterialChange(this);soRecalc();">${optionsFor(DB.materials,'id',m=>`${m.name} (${m.code})`)}</select>
     <input class="so-qty" type="number" min="0" placeholder="Qty" oninput="soRowMaterialChange(this.closest('.irow').querySelector('.so-mat'));soRecalc();">
     <input class="so-rate" type="number" min="0" step="0.01" placeholder="Rate" oninput="soRecalc()">
     <input class="so-gst" type="number" min="0" step="0.01" placeholder="GST %" value="18" oninput="soRecalc()">
@@ -2355,7 +2355,7 @@ function renderProductionNew(main){
   main.innerHTML = pageHead('New Production Plan', 'Schedule production for a material — quantity, dates, machine/line.') + `
     <div class="panel"><div class="panel-body">
       <div class="field-row">
-        <div class="field"><label>Material *</label><select id="pp_mat" onchange="updateProductionBomPreview()">${optionsFor(DB.materials,'id',m=>m.name)}</select></div>
+        <div class="field"><label>Material *</label><select id="pp_mat" onchange="updateProductionBomPreview()">${optionsFor(DB.materials,'id',m=>`${m.name} (${m.code})`)}</select></div>
         <div class="field"><label>Linked Sales Order (optional)</label><select id="pp_so" onchange="onProductionSOLinkChange()">
           <option value="">— None —</option>
           ${openSOs.map(so=>`<option value="${so.id}">${so.soNo} — ${escapeHtml(customerById(so.customerId)?.name||'')} — ${escapeHtml(soItemSummary(so))}</option>`).join('')}
@@ -2563,7 +2563,7 @@ function confirmCompleteProduction(id){
 function renderBomNew(main){
   main.innerHTML = pageHead('New BOM', 'Define the recipe — what raw materials/components are needed to make 1 unit of a finished product.') + `
     <div class="panel"><div class="panel-body">
-      <div class="field"><label>Parent Product (Finished Item) *</label><select id="bom_parent">${optionsFor(DB.materials,'id',m=>m.name)}</select></div>
+      <div class="field"><label>Parent Product (Finished Item) *</label><select id="bom_parent">${optionsFor(DB.materials,'id',m=>`${m.name} (${m.code})`)}</select></div>
       <div class="field"><label>Components (per 1 unit of the parent)</label></div>
       <div id="bomItems" class="so-item-rows"></div>
       <button class="btn ghost" onclick="addBomRow()" style="margin-bottom:14px;">+ Add component</button>
@@ -2576,7 +2576,7 @@ function renderBomNew(main){
 function addBomRow(){
   const wrap = document.getElementById('bomItems');
   const row = document.createElement('div'); row.className='irow';
-  row.innerHTML = `<select class="bom-mat">${optionsFor(DB.materials,'id',m=>m.name)}</select>
+  row.innerHTML = `<select class="bom-mat">${optionsFor(DB.materials,'id',m=>`${m.name} (${m.code})`)}</select>
     <input class="bom-qty" type="number" min="0" step="0.001" placeholder="Qty per unit">
     <input class="bom-unit" placeholder="Unit (NOS/KG)" value="NOS">
     <span></span><span></span>
@@ -2618,21 +2618,30 @@ function openBomView(id){
   if(!b) return;
   const m = materialById(b.parentMaterialId);
   modal(`BOM — ${b.bomNo}`, `
-    <div class="kv" style="margin-bottom:12px;"><div class="k">Parent Product</div><div class="v">${escapeHtml(m?m.name:'')}</div></div>
-    <table><thead><tr><th>Component</th><th class="num">Qty per Unit</th><th>Unit</th></tr></thead>
+    <div class="kv" style="margin-bottom:12px;"><div class="k">Parent Product</div><div class="v">${escapeHtml(m?m.name:'')} <span class="muted mono">(${m?m.code:'—'})</span></div></div>
+    <table><thead><tr><th>Component</th><th class="mono">Code</th><th class="num">Qty per Unit</th><th>Unit</th></tr></thead>
       <tbody>${b.components.map(c=>{
         const cm = materialById(c.materialId);
-        return `<tr><td>${escapeHtml(cm?cm.name:'')}</td><td class="num">${c.qtyPerUnit}</td><td>${escapeHtml(c.unit)}</td></tr>`;
+        return `<tr><td>${escapeHtml(cm?cm.name:'')}</td><td class="mono">${cm?cm.code:'—'}</td><td class="num">${c.qtyPerUnit}</td><td>${escapeHtml(c.unit)}</td></tr>`;
       }).join('')}</tbody></table>
     ${b.remarks?`<div style="margin-top:10px;font-size:12px;"><b>Remarks:</b> ${escapeHtml(b.remarks)}</div>`:''}
-  `, `<button class="btn ghost" onclick="closeModal()">Close</button><button class="btn primary" onclick="closeModal();openBomEdit('${b.id}')">Edit</button>`);
+  `, `<button class="btn ghost" onclick="closeModal()">Close</button><button class="btn ghost" style="color:var(--danger);" onclick="deleteBom('${b.id}')">🗑 Delete</button><button class="btn primary" onclick="closeModal();openBomEdit('${b.id}')">Edit</button>`);
+}
+function deleteBom(id){
+  const b = DB.boms.find(x=>x.id===id);
+  if(!b) return;
+  if(!confirm(`Delete ${b.bomNo}? This cannot be undone.`)) return;
+  DB.boms = DB.boms.filter(x=>x.id!==id);
+  saveDB(); closeModal();
+  showToast(`${b.bomNo} deleted`);
+  renderBomRegister(document.getElementById('main'));
 }
 function openBomEdit(id){
   const b = DB.boms.find(x=>x.id===id);
   if(!b) return;
   modal(`Edit BOM — ${b.bomNo}`, `
     <div class="section-note">Change the Parent Product if it was linked to the wrong material (e.g. a duplicate created during import), or adjust components/quantities.</div>
-    <div class="field"><label>Parent Product (Finished Item) *</label><select id="ebom_parent">${optionsFor(DB.materials,'id',m=>m.name)}</select></div>
+    <div class="field"><label>Parent Product (Finished Item) *</label><select id="ebom_parent">${optionsFor(DB.materials,'id',m=>`${m.name} (${m.code})`)}</select></div>
     <div class="field"><label>Components (per 1 unit of the parent)</label></div>
     <div id="ebomItems" class="so-item-rows"></div>
     <button class="btn ghost" onclick="addEbomRow()" style="margin-bottom:14px;">+ Add component</button>
@@ -2643,7 +2652,7 @@ function openBomEdit(id){
   wrap.innerHTML = '';
   b.components.forEach(c=>{
     const row = document.createElement('div'); row.className='irow';
-    row.innerHTML = `<select class="ebom-mat">${optionsFor(DB.materials,'id',m=>m.name)}</select>
+    row.innerHTML = `<select class="ebom-mat">${optionsFor(DB.materials,'id',m=>`${m.name} (${m.code})`)}</select>
       <input class="ebom-qty" type="number" min="0" step="0.001" value="${c.qtyPerUnit}">
       <input class="ebom-unit" value="${escapeHtml(c.unit)}">
       <span></span><span></span>
@@ -2655,7 +2664,7 @@ function openBomEdit(id){
 function addEbomRow(){
   const wrap = document.getElementById('ebomItems');
   const row = document.createElement('div'); row.className='irow';
-  row.innerHTML = `<select class="ebom-mat">${optionsFor(DB.materials,'id',m=>m.name)}</select>
+  row.innerHTML = `<select class="ebom-mat">${optionsFor(DB.materials,'id',m=>`${m.name} (${m.code})`)}</select>
     <input class="ebom-qty" type="number" min="0" step="0.001" placeholder="Qty per unit">
     <input class="ebom-unit" placeholder="Unit (NOS/KG)" value="NOS">
     <span></span><span></span>
