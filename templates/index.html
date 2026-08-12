@@ -2121,6 +2121,34 @@ function renderSalesOrderRegister(main){
       }).join('') : `<tr class="empty-row"><td colspan="8">No sales orders yet. <span class="link-btn" onclick="navigate('salesorder-new')">Create one</span></td></tr>`}</tbody></table>
     </div></div>`;
 }
+function soBomCheckHtml(so){
+  let html = '';
+  so.items.forEach((it, idx)=>{
+    const bom = bomForMaterial(it.materialId);
+    if(!bom) return;
+    const m = materialById(it.materialId);
+    const reqs = computeBOMRequirement(bom, it.qty);
+    const shortOnes = reqs.filter(r=>r.short);
+    html += `<div class="section-note no-print" style="margin:10px 0;"><b>Raw material check for ${it.qty} × ${escapeHtml(m?m.name:'')}</b> (per BOM ${bom.bomNo}, live stock):<br>` +
+      reqs.map(r=>`${escapeHtml(r.name)} — need ${r.required.toFixed(3)} ${r.unit}, available ${r.available} <span style="color:${r.short?'var(--danger)':'var(--good)'};font-weight:600;">${r.short?'⚠ short':'✓ OK'}</span>`).join('<br>') +
+      (shortOnes.length ? `<div style="margin-top:8px;"><button class="btn sm primary" onclick="createPOFromSOShortfall('${so.id}',${idx})">🛒 Create Purchase Order for Shortfall</button></div>` : '') +
+      `</div>`;
+  });
+  return html;
+}
+function createPOFromSOShortfall(soId, idx){
+  const so = DB.salesOrders.find(x=>x.id===soId);
+  if(!so) return;
+  const it = so.items[idx];
+  if(!it) return;
+  const bom = bomForMaterial(it.materialId);
+  if(!bom) return;
+  const shortItems = computeBOMRequirement(bom, it.qty).filter(r=>r.short).map(r=>({materialId:r.materialId, qty:+(r.required-r.available).toFixed(3), unit:r.unit}));
+  if(!shortItems.length){ showToast('Nothing short for this line'); return; }
+  window.__pendingPOPrefill = { linkedSalesOrderId: soId, items: shortItems };
+  closeModal();
+  navigate('purchaseorder-new');
+}
 function openSalesOrderView(id){
   const so = DB.salesOrders.find(x=>x.id===id);
   if(!so) return;
@@ -2146,6 +2174,7 @@ function openSalesOrderView(id){
         return `<tr><td>${escapeHtml(m?m.name:'')}</td><td class="mono">${escapeHtml(m&&m.hsn?m.hsn:'—')}</td>
           <td class="num">${it.qty}</td><td class="num">${fmtMoney(it.rate)}</td><td class="num">${it.gstPct}%</td><td class="num">${fmtMoney(lineTotal)}</td></tr>`;
       }).join('')}</tbody></table>
+    ${soBomCheckHtml(so)}
     <div style="margin-top:10px;font-size:12.5px;">
       <div style="display:flex;justify-content:space-between;color:var(--ink-faint);"><span>Taxable Value</span><span>${fmtMoney(so.taxable)}</span></div>
       <div style="display:flex;justify-content:space-between;color:var(--ink-faint);"><span>CGST + SGST</span><span>${fmtMoney(so.gst)}</span></div>
@@ -2187,6 +2216,10 @@ function renderPurchaseOrderNew(main){
   if(prefill && prefill.items && prefill.items.length){
     document.getElementById('poItems').innerHTML='';
     prefill.items.forEach(pi=>addPoRow(pi.materialId, pi.qty));
+    if(prefill.linkedSalesOrderId){
+      const soSel = document.getElementById('po_so');
+      if(soSel){ soSel.value = prefill.linkedSalesOrderId; onPOSOLinkChange(); }
+    }
     showToast(`Pre-filled ${prefill.items.length} short component(s) — review quantities & pick a supplier`);
     window.__pendingPOPrefill = null;
   } else {
@@ -3064,9 +3097,26 @@ function urlBase64ToUint8Array(base64String){
 function pushSupported(){
   return 'serviceWorker' in navigator && 'PushManager' in window;
 }
+/* navigator.serviceWorker.ready can hang indefinitely in some edge cases
+   (e.g. a confused registration state after repeated redeploys during testing).
+   Race it against a short timeout and fall back to getRegistration(), which
+   returns immediately regardless of activation state. */
+async function getSWRegistrationSafe(){
+  try{
+    const raced = await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise(resolve => setTimeout(()=>resolve(null), 3000))
+    ]);
+    if(raced) return raced;
+  }catch(e){ console.error('serviceWorker.ready failed', e); }
+  try{
+    return await navigator.serviceWorker.getRegistration();
+  }catch(e){ console.error('getRegistration failed', e); return null; }
+}
 async function isPushSubscribed(){
   if(!pushSupported()) return false;
-  const reg = await navigator.serviceWorker.ready;
+  const reg = await getSWRegistrationSafe();
+  if(!reg) return false;
   const sub = await reg.pushManager.getSubscription();
   return !!sub;
 }
@@ -3078,7 +3128,8 @@ async function enablePushNotifications(){
     const keyRes = await fetch('/api/push/vapid-public-key');
     const { key } = await keyRes.json();
     if(!key){ showToast('Push is not configured on the server yet'); return; }
-    const reg = await navigator.serviceWorker.ready;
+    const reg = await getSWRegistrationSafe();
+    if(!reg){ showToast('⚠ Could not reach the service worker — try reloading the page'); return; }
     const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(key)
@@ -3096,7 +3147,8 @@ async function enablePushNotifications(){
 }
 async function disablePushNotifications(){
   try{
-    const reg = await navigator.serviceWorker.ready;
+    const reg = await getSWRegistrationSafe();
+    if(!reg) return;
     const sub = await reg.pushManager.getSubscription();
     if(sub){
       await fetch('/api/push/unsubscribe', {
@@ -3110,8 +3162,21 @@ async function disablePushNotifications(){
   }catch(e){ console.error('Push unsubscribe failed', e); }
 }
 async function toggleNotifications(){
-  if(await isPushSubscribed()) await disablePushNotifications();
-  else await enablePushNotifications();
+  // IMPORTANT: Notification.permission is a plain synchronous property (not a
+  // promise) - checking it here avoids any await before we might need to call
+  // Notification.requestPermission(). If we awaited something async (like the
+  // service worker) first, browsers can silently refuse to show the permission
+  // popup at all, since it's no longer "directly" tied to this click.
+  if(Notification.permission === 'granted'){
+    // Permission already decided - safe to do the async subscription check now,
+    // since no popup is needed either way.
+    if(await isPushSubscribed()) await disablePushNotifications();
+    else await enablePushNotifications();
+  } else {
+    // Not yet granted (or denied) - go straight for the permission prompt,
+    // as directly as possible from this click.
+    await enablePushNotifications();
+  }
 }
 async function updateNotifBellUI(){
   const btn = document.getElementById('notifBellBtn');
