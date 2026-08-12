@@ -2056,18 +2056,35 @@ function soRecalc(){
   const bomBox = document.getElementById('soBomBox');
   if(bomBox){
     let html = '';
-    items.forEach(it=>{
+    items.forEach((it, idx)=>{
       const bom = bomForMaterial(it.materialId);
       if(!bom || it.qty<=0) return;
       const m = materialById(it.materialId);
       const reqs = computeBOMRequirement(bom, it.qty);
+      const shortOnes = reqs.filter(r=>r.short);
       html += `<div class="section-note" style="margin-bottom:8px;"><b>Raw material needed for ${it.qty} × ${escapeHtml(m?m.name:'')}</b> (per BOM ${bom.bomNo}):<br>` +
         reqs.map(r=>`${escapeHtml(r.name)} — need ${r.required.toFixed(3)} ${r.unit}, available ${r.available} <span style="color:${r.short?'var(--danger)':'var(--good)'};font-weight:600;">${r.short?'⚠ short':'✓ OK'}</span>`).join('<br>') +
+        (shortOnes.length ? `<div style="margin-top:8px;"><button class="btn sm primary" onclick='createPOFromShortfall(${idx})'>🛒 Create Purchase Order for Shortfall</button></div>` : '') +
         `</div>`;
     });
     bomBox.innerHTML = html;
     bomBox.style.display = html ? '' : 'none';
+    window.__soBomReqsCache = items.map(it=>{
+      const bom = bomForMaterial(it.materialId);
+      if(!bom || it.qty<=0) return null;
+      return computeBOMRequirement(bom, it.qty).filter(r=>r.short).map(r=>({materialId:r.materialId, qty: +(r.required - r.available).toFixed(3), unit:r.unit}));
+    });
   }
+}
+function createPOFromShortfall(idx){
+  const items = soReadItems();
+  const it = items[idx];
+  if(!it) return;
+  const reqCache = window.__soBomReqsCache;
+  const shortItems = reqCache && reqCache[idx] ? reqCache[idx] : [];
+  if(!shortItems.length){ showToast('Nothing short for this line'); return; }
+  window.__pendingPOPrefill = { linkedSalesOrderId: null, items: shortItems };
+  navigate('purchaseorder-new');
 }
 function submitSalesOrder(){
   const customerId = val('so_cust');
@@ -2166,7 +2183,15 @@ function renderPurchaseOrderNew(main){
       <button class="btn primary" onclick="submitPurchaseOrder()">Create Purchase Order</button>
     </div></div>`;
   document.getElementById('poItems').innerHTML='';
-  addPoRow();
+  const prefill = window.__pendingPOPrefill;
+  if(prefill && prefill.items && prefill.items.length){
+    document.getElementById('poItems').innerHTML='';
+    prefill.items.forEach(pi=>addPoRow(pi.materialId, pi.qty));
+    showToast(`Pre-filled ${prefill.items.length} short component(s) — review quantities & pick a supplier`);
+    window.__pendingPOPrefill = null;
+  } else {
+    addPoRow();
+  }
 }
 function onPOSOLinkChange(){
   const so = DB.salesOrders.find(s=>s.id===val('po_so'));
@@ -2175,15 +2200,16 @@ function onPOSOLinkChange(){
   if(so){ box.style.display=''; box.innerHTML = soDetailsHtml(so); }
   else { box.style.display='none'; box.innerHTML=''; }
 }
-function addPoRow(){
+function addPoRow(prefillMaterialId, prefillQty){
   const wrap = document.getElementById('poItems');
   const row = document.createElement('div'); row.className='irow';
-  row.innerHTML = `<select class="po-mat">${optionsFor(DB.materials,'id',m=>m.name)}</select>
-    <input class="po-qty" type="number" min="0" placeholder="Qty">
+  row.innerHTML = `<select class="po-mat">${optionsFor(DB.materials,'id',m=>`${m.name} (${m.code})`)}</select>
+    <input class="po-qty" type="number" min="0" placeholder="Qty" value="${prefillQty!=null?prefillQty:''}">
     <input class="po-rate" type="number" min="0" step="0.01" placeholder="Rate (optional)">
     <span></span><span></span>
     <button class="rm-row" onclick="this.parentElement.remove();">&times;</button>`;
   wrap.appendChild(row);
+  if(prefillMaterialId) row.querySelector('.po-mat').value = prefillMaterialId;
 }
 function submitPurchaseOrder(){
   const supplierId = val('po_supplier');
