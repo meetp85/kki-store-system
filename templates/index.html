@@ -2088,6 +2088,25 @@ function soRecalc(){
     });
   }
 }
+/* Validates and creates the Sales Order currently being filled in on the form.
+   Returns the created record, or null if validation failed (a toast was
+   already shown explaining why, and the form is left untouched either way). */
+function trySaveCurrentSalesOrder(){
+  const customerId = val('so_cust');
+  if(!customerId){ showToast('Select a customer'); return null; }
+  const items = soReadItems();
+  if(!items.length){ showToast('Add at least one material line with quantity'); return null; }
+  for(const it of items){
+    if(it.rate<=0){ showToast('Enter a Rate for every item line'); return null; }
+  }
+  const rec = doCreateSalesOrder({
+    customerId, customerPoNo: val('so_po'), date: val('so_date'), deliveryDate: val('so_delivery'),
+    paymentTerms: val('so_terms'), remarks: val('so_remarks'), items
+  });
+  saveDB();
+  notifyPush('New Sales Order', `${rec.soNo} — ${customerById(customerId)?.name||'customer'} — ${fmtMoney(rec.grandTotal)}`);
+  return rec;
+}
 function createPOFromShortfall(idx){
   const items = soReadItems();
   const it = items[idx];
@@ -2095,24 +2114,18 @@ function createPOFromShortfall(idx){
   const reqCache = window.__soBomReqsCache;
   const shortItems = reqCache && reqCache[idx] ? reqCache[idx] : [];
   if(!shortItems.length){ showToast('Nothing short for this line'); return; }
-  window.__pendingPOPrefill = { linkedSalesOrderId: null, items: shortItems };
+  // Save the Sales Order FIRST - clicking this must never discard what was
+  // typed in. Only once it's safely created do we carry it forward to the PO.
+  const rec = trySaveCurrentSalesOrder();
+  if(!rec) return; // validation failed - toast already shown, stay on this form
+  window.__pendingPOPrefill = { linkedSalesOrderId: rec.id, items: shortItems };
+  showToast(`Sales Order ${rec.soNo} created — now create the Purchase Order`);
   navigate('purchaseorder-new');
 }
 function submitSalesOrder(){
-  const customerId = val('so_cust');
-  if(!customerId){ showToast('Select a customer'); return; }
-  const items = soReadItems();
-  if(!items.length){ showToast('Add at least one material line with quantity'); return; }
-  for(const it of items){
-    if(it.rate<=0){ showToast('Enter a Rate for every item line'); return; }
-  }
-  const rec = doCreateSalesOrder({
-    customerId, customerPoNo: val('so_po'), date: val('so_date'), deliveryDate: val('so_delivery'),
-    paymentTerms: val('so_terms'), remarks: val('so_remarks'), items
-  });
-  saveDB();
+  const rec = trySaveCurrentSalesOrder();
+  if(!rec) return;
   showToast(`Sales Order created — ${rec.soNo}`);
-  notifyPush('New Sales Order', `${rec.soNo} — ${customerById(customerId)?.name||'customer'} — ${fmtMoney(rec.grandTotal)}`);
   openSalesOrderView(rec.id);
   navigate('salesorder-register');
 }
