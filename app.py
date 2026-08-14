@@ -19,7 +19,9 @@ app.config.update(
 
 VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
-VAPID_CLAIM_EMAIL = os.environ.get("VAPID_CLAIM_EMAIL", "mailto:admin@example.com")
+VAPID_CLAIM_EMAIL = os.environ.get("VAPID_CLAIM_EMAIL") or "mailto:admin@example.com"
+if not VAPID_CLAIM_EMAIL.startswith("mailto:"):
+    VAPID_CLAIM_EMAIL = "mailto:" + VAPID_CLAIM_EMAIL
 
 
 def get_conn():
