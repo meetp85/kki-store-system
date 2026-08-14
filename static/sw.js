@@ -14,8 +14,19 @@ self.addEventListener('activate', (event) => {
 });
 
 // Pass every request straight through to the network - no caching.
+// If a request genuinely fails (a real network hiccup), fail gracefully
+// instead of throwing an unhandled rejection that can leave the page in a
+// broken, half-updated state.
 self.addEventListener('fetch', (event) => {
-  event.respondWith(fetch(event.request));
+  event.respondWith(
+    fetch(event.request).catch(() => {
+      return new Response('Network error — please check your connection and try again.', {
+        status: 503,
+        statusText: 'Service Unavailable',
+        headers: { 'Content-Type': 'text/plain' },
+      });
+    })
+  );
 });
 
 // Show a real OS-level notification when a push arrives, even if the app
