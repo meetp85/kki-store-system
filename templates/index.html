@@ -3250,18 +3250,21 @@ async function enablePushNotifications(){
     const perm = await Notification.requestPermission();
     if(perm !== 'granted'){ showToast('Notifications permission was not granted'); return; }
     const keyRes = await fetch('/api/push/vapid-public-key');
+    if(keyRes.status === 401){ showToast('⚠ Your session on this device isn\'t logged in properly — try reloading the page and signing in again'); return; }
+    if(!keyRes.ok){ showToast(`⚠ Server error checking push setup (status ${keyRes.status})`); return; }
     const { key } = await keyRes.json();
-    if(!key){ showToast('Push is not configured on the server yet'); return; }
+    if(!key){ showToast('Push is not configured on the server yet — VAPID keys missing on Render'); return; }
     const reg = await getSWRegistrationSafe();
     if(!reg){ showToast('⚠ Could not reach the service worker — try reloading the page'); return; }
     const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(key)
     });
-    await fetch('/api/push/subscribe', {
+    const subRes = await fetch('/api/push/subscribe', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify(sub)
     });
+    if(!subRes.ok){ showToast(`⚠ Could not save subscription on server (status ${subRes.status})`); return; }
     showToast('Notifications enabled on this device');
     updateNotifBellUI();
   }catch(e){
