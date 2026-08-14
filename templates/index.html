@@ -120,6 +120,10 @@
   tbody tr:last-child td{border-bottom:none;}
   .num{text-align:right; font-variant-numeric:tabular-nums;}
   .empty-row td{text-align:center; color:var(--ink-faint); padding:26px; font-style:italic;}
+  /* Long lists scroll within a fixed-height box instead of stretching the
+     whole page - header stays pinned in view as you scroll. */
+  .scroll-table{max-height:65vh; overflow-y:auto;}
+  .scroll-table thead th{position:sticky; top:0; background:#fff; z-index:1; box-shadow:0 1px 0 var(--line);}
 
   /* TAGS / BADGES */
   .tag{display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:20px; font-size:11px; font-weight:700;}
@@ -1073,7 +1077,7 @@ function renderMaterials(main){
   main.innerHTML = pageHead('Material Master', 'Central database of all raw materials & consumables.',
     importBtn + ' ' + uploadBtn + ` <button class="btn primary" onclick="openMaterialForm()">+ Add Material</button>`) +
     `<div class="search-bar"><input id="matSearch" placeholder="Search by name, code, category or extrusion no…" oninput="renderMaterialsTable()"></div>
-     <div class="panel"><div class="panel-body" style="padding:0;"><table id="matTable"></table></div></div>`;
+     <div class="panel"><div class="panel-body scroll-table" style="padding:0;"><table id="matTable"></table></div></div>`;
   renderMaterialsTable();
 }
 function renderMaterialsTable(){
@@ -1204,7 +1208,7 @@ function deleteMaterial(id){
 function renderSuppliers(main){
   main.innerHTML = pageHead('Suppliers', 'Supplier master for inward material sourcing.',
     `<button class="btn primary" onclick="openSupplierForm()">+ Add Supplier</button>`) +
-    `<div class="panel"><div class="panel-body" style="padding:0;"><table><thead><tr>
+    `<div class="panel"><div class="panel-body scroll-table" style="padding:0;"><table><thead><tr>
       <th>Code</th><th>Name</th><th>Address</th><th>GST No.</th><th>Contact</th><th>Mobile</th><th></th></tr></thead>
       <tbody>${DB.suppliers.length? DB.suppliers.map(s=>`<tr><td class="mono">${s.code}</td><td><b>${escapeHtml(s.name)}</b></td>
         <td>${escapeHtml(s.address)}</td><td>${escapeHtml(s.gst)}</td><td>${escapeHtml(s.contact)}</td><td>${escapeHtml(s.mobile)}</td>
@@ -1237,7 +1241,7 @@ function saveSupplier(id){
 function renderCustomers(main){
   main.innerHTML = pageHead('Customers', 'Customer master for outward dispatch & delivery challans.',
     `<button class="btn primary" onclick="openCustomerForm()">+ Add Customer</button>`) +
-    `<div class="panel"><div class="panel-body" style="padding:0;"><table><thead><tr>
+    `<div class="panel"><div class="panel-body scroll-table" style="padding:0;"><table><thead><tr>
       <th>Code</th><th>Name</th><th>GSTIN</th><th>Address</th><th>Contact</th><th>Mobile</th><th></th></tr></thead>
       <tbody>${DB.customers.length? DB.customers.map(c=>`<tr><td class="mono">${c.code}</td><td><b>${escapeHtml(c.name)}</b></td>
         <td class="mono">${escapeHtml(c.gstin||'—')}</td><td>${escapeHtml(c.address)}</td><td>${escapeHtml(c.contact)}</td><td>${escapeHtml(c.mobile)}</td>
@@ -1306,7 +1310,7 @@ function renderTags(main){
     </div>
     <div class="panel" style="margin-top:16px;">
       <div class="panel-head"><h3>Batches by Tag</h3></div>
-      <div class="panel-body" style="padding:0;">
+      <div class="panel-body scroll-table" style="padding:0;">
         <table><thead><tr><th>Identification No.</th><th>Material</th><th>Tag</th><th class="num">Qty Remaining</th><th>Received</th></tr></thead>
         <tbody>${DB.batches.length? DB.batches.slice().reverse().map(b=>`<tr>
           <td><span class="ident-badge">${b.identNo}</span></td><td>${escapeHtml(materialById(b.materialId)?.name||'')}</td>
@@ -1591,7 +1595,7 @@ function showInwardConfirmation(batches){
 function renderInwardRegister(main){
   main.innerHTML = pageHead('Inward Material Register', 'Format No. KKI/STR/REC/04 — auto-generated.',
     `<button class="btn ghost" onclick="exportCSV(inwardCSVRows(),'Inward_Register.csv')">⬇ Export CSV</button>`) +
-    `<div class="panel"><div class="panel-body" style="padding:0;"><table><thead><tr>
+    `<div class="panel"><div class="panel-body scroll-table" style="padding:0;"><table><thead><tr>
       <th>Date</th><th>Inward No.</th><th>Ident. No.</th><th>Party</th><th>Challan No.</th><th>Material</th>
       <th class="num">Qty</th><th>Status</th></tr></thead><tbody>
       ${DB.batches.length? DB.batches.slice().reverse().map(b=>{
@@ -1612,7 +1616,7 @@ function inwardCSVRows(){
 function renderStock(main){
   main.innerHTML = pageHead('Current Stock', 'Live stock levels — click a material to view its batch-wise stock card & FIFO order.') +
     `<div class="search-bar"><input id="stockSearch" placeholder="Search material…" oninput="renderStockTable()"></div>
-     <div class="panel"><div class="panel-body" style="padding:0;"><table id="stockTable"></table></div></div>`;
+     <div class="panel"><div class="panel-body scroll-table" style="padding:0;"><table id="stockTable"></table></div></div>`;
   renderStockTable();
 }
 function renderStockTable(){
@@ -1655,7 +1659,7 @@ function renderStockRegister(main){
   main.innerHTML = pageHead('Stock Register', 'Format No. KKI/STR/REC/01 — every movement recorded automatically.',
     `<button class="btn ghost" onclick="exportCSV(stockRegisterCSV(),'Stock_Register.csv')">⬇ Export CSV</button>`) +
     `<div class="search-bar"><select class="filter" id="srMaterial" onchange="renderStockRegisterTable()">${matOpts}</select></div>
-     <div class="panel"><div class="panel-body" style="padding:0;"><table id="srTable"></table></div></div>`;
+     <div class="panel"><div class="panel-body scroll-table" style="padding:0;"><table id="srTable"></table></div></div>`;
   renderStockRegisterTable();
 }
 function renderStockRegisterTable(){
@@ -1686,7 +1690,7 @@ function renderExpiry(main){
       <div class="card stat"><div class="label">Expires in 7 Days</div><div class="value warn">${d7.length}</div></div>
       <div class="card stat"><div class="label">Expires in 30 Days</div><div class="value">${d30.length}</div></div>
     </div>
-    <div class="panel"><div class="panel-body" style="padding:0;">
+    <div class="panel"><div class="panel-body scroll-table" style="padding:0;">
       <table><thead><tr><th>Ident. No.</th><th>Material</th><th class="num">Qty Remaining</th><th>Expiry Date</th><th>Days Left</th><th>Status</th></tr></thead>
       <tbody>${withExp.length? withExp.sort((a,b)=>new Date(a.expiryDate)-new Date(b.expiryDate)).map(b=>{
         const d = daysBetween(todayISO(), b.expiryDate);
@@ -1701,7 +1705,7 @@ function renderExpiry(main){
 function renderReorder(main){
   const low = DB.materials.filter(m=>currentStock(m.id) < m.reorderLevel);
   main.innerHTML = pageHead('Reorder Alerts', 'Materials below reorder level — Store Incharge should inform Purchase Dept.') +
-    `<div class="panel"><div class="panel-body" style="padding:0;">
+    `<div class="panel"><div class="panel-body scroll-table" style="padding:0;">
       <table><thead><tr><th>Material</th><th>Supplier</th><th class="num">Current Stock</th><th class="num">Reorder Level</th><th class="num">Suggested Order</th></tr></thead>
       <tbody>${low.length? low.map(m=>{
         const stock = currentStock(m.id); const sug = Math.max(m.maxStock - stock, m.reorderLevel);
@@ -1759,7 +1763,7 @@ function submitRequisition(){
 }
 function renderRequisitions(main){
   main.innerHTML = pageHead('Material Requisitions', 'Pending, approved and issued production requests.') +
-    `<div class="panel"><div class="panel-body" style="padding:0;"><table><thead><tr>
+    `<div class="panel"><div class="panel-body scroll-table" style="padding:0;"><table><thead><tr>
       <th>Req. No.</th><th>Date Raised</th><th>Required By</th><th>Department</th><th>Job No.</th><th>Items</th><th>Status</th><th></th></tr></thead>
       <tbody>${DB.requisitions.length? DB.requisitions.slice().reverse().map(r=>{
         const daysLeft = r.requiredDate ? daysBetween(todayISO(), r.requiredDate) : null;
@@ -1819,7 +1823,7 @@ function confirmIssue(reqId){
 function renderIssues(main){
   main.innerHTML = pageHead('Material Issue Register', 'Format No. KKI/STR/REC/03 — auto-generated with FIFO batch trace.',
     `<button class="btn ghost" onclick="exportCSV(issuesCSV(),'Issue_Register.csv')">⬇ Export CSV</button>`) +
-    `<div class="panel"><div class="panel-body" style="padding:0;"><table><thead><tr>
+    `<div class="panel"><div class="panel-body scroll-table" style="padding:0;"><table><thead><tr>
       <th>Issue No.</th><th>Date</th><th>Issued By</th><th>Items (Batch × Qty)</th></tr></thead>
       <tbody>${DB.issues.length? DB.issues.slice().reverse().map(i=>`<tr><td class="mono">${i.issueNo}</td><td>${fmtDate(i.date)}</td>
         <td>${escapeHtml(i.issuedBy)}</td><td>${i.items.map(it=>`${escapeHtml(materialById(it.materialId)?.name||'')} — <span class="ident-badge">${it.identNo}</span> × ${it.qty}`).join('<br>')}</td></tr>`).join('') :
@@ -1900,7 +1904,7 @@ function submitOutward(){
 function renderOutwardRegister(main){
   main.innerHTML = pageHead('Outward Material Register', 'Format No. KKI/STR/REC/05.',
     `<button class="btn ghost" onclick="exportCSV(outwardCSV(),'Outward_Register.csv')">⬇ Export CSV</button>`) +
-    `<div class="panel"><div class="panel-body" style="padding:0;"><table><thead><tr>
+    `<div class="panel"><div class="panel-body scroll-table" style="padding:0;"><table><thead><tr>
       <th>DC No.</th><th>Date</th><th>Customer</th><th>Items</th><th></th></tr></thead>
       <tbody>${DB.outwards.length? DB.outwards.slice().reverse().map(o=>`<tr><td class="mono">${o.dcNo}</td><td>${fmtDate(o.date)}</td>
         <td>${escapeHtml(customerById(o.customerId)?.name||'')}</td>
@@ -1984,7 +1988,7 @@ function renderScrapRegister(main){
     `<div class="grid cards3" style="margin-bottom:16px;">${Object.entries(monthly).length? Object.entries(monthly).map(([k,v])=>
       `<div class="card stat"><div class="label">${escapeHtml(k)}</div><div class="value">${v}</div></div>`).join('') :
       `<div class="muted">No scrap recorded yet.</div>`}</div>
-    <div class="panel"><div class="panel-body" style="padding:0;"><table><thead><tr>
+    <div class="panel"><div class="panel-body scroll-table" style="padding:0;"><table><thead><tr>
       <th>Scrap No.</th><th>Date</th><th>Material</th><th>Batch</th><th class="num">Qty</th><th>Reason</th><th>Dept.</th></tr></thead>
       <tbody>${DB.scraps.length? DB.scraps.slice().reverse().map(s=>`<tr><td class="mono">${s.scrapNo}</td><td>${fmtDate(s.date)}</td>
         <td>${escapeHtml(materialById(s.materialId)?.name||'')}</td><td>${s.identNo!=='—'?`<span class="ident-badge">${s.identNo}</span>`:'—'}</td>
@@ -2051,7 +2055,7 @@ function renderReturnableRegister(main){
   main.innerHTml='';
   main.innerHTML = pageHead('Returnable Challan Register', 'Material sent for job work — tracked until fully received back.',
     `<button class="btn ghost" onclick="exportCSV(returnableCSV(),'Returnable_Register.csv')">⬇ Export CSV</button>`) +
-    `<div class="panel"><div class="panel-body" style="padding:0;"><table><thead><tr>
+    `<div class="panel"><div class="panel-body scroll-table" style="padding:0;"><table><thead><tr>
       <th>RC No.</th><th>Challan No.</th><th>Material</th><th>Job Worker</th><th>Process</th>
       <th class="num">Sent</th><th class="num">Received</th><th class="num">Shortage</th>
       <th>Expected Return</th><th>Status</th><th></th></tr></thead>
@@ -2265,7 +2269,7 @@ function submitSalesOrder(){
 }
 function renderSalesOrderRegister(main){
   main.innerHTML = pageHead('Sales Order Register', 'Every sales order raised, with customer, value & status.') +
-    `<div class="panel"><div class="panel-body" style="padding:0;"><table><thead><tr>
+    `<div class="panel"><div class="panel-body scroll-table" style="padding:0;"><table><thead><tr>
       <th>SO No.</th><th>Date</th><th>Customer</th><th>Customer PO</th><th>Delivery Date</th>
       <th class="num">Grand Total</th><th>Status</th><th></th></tr></thead>
       <tbody>${DB.salesOrders.length? DB.salesOrders.slice().reverse().map(so=>{
@@ -2424,7 +2428,7 @@ function submitPurchaseOrder(){
 }
 function renderPurchaseOrderRegister(main){
   main.innerHTML = pageHead('Purchase Order Register', 'Every purchase order raised to suppliers, with receipt status.') +
-    `<div class="panel"><div class="panel-body" style="padding:0;"><table><thead><tr>
+    `<div class="panel"><div class="panel-body scroll-table" style="padding:0;"><table><thead><tr>
       <th>PO No.</th><th>Date</th><th>Supplier</th><th>Linked SO</th><th>Expected Delivery</th>
       <th>Status</th><th></th></tr></thead>
       <tbody>${DB.purchaseOrders.length? DB.purchaseOrders.slice().reverse().map(po=>{
@@ -2515,7 +2519,7 @@ async function submitDrawing(){
 }
 function renderDrawingRegister(main){
   main.innerHTML = pageHead('Drawings Register', 'Reference drawings, linked to materials where applicable.') +
-    `<div class="panel"><div class="panel-body" style="padding:0;"><table><thead><tr>
+    `<div class="panel"><div class="panel-body scroll-table" style="padding:0;"><table><thead><tr>
       <th>Drawing No.</th><th>Material</th><th>File</th><th>Date</th><th>Remarks</th></tr></thead>
       <tbody>${DB.drawings.length? DB.drawings.slice().reverse().map(d=>{
         const m = d.materialId ? materialById(d.materialId) : null;
@@ -2534,7 +2538,7 @@ function drawingForMaterial(materialId){
 function renderQualityInspections(main){
   const pending = DB.batches.filter(b=>b.tag==='yellow').slice().reverse();
   main.innerHTML = pageHead('Pending Inspections', 'Material awaiting Quality review before it counts as usable stock.') +
-    `<div class="panel"><div class="panel-body" style="padding:0;">
+    `<div class="panel"><div class="panel-body scroll-table" style="padding:0;">
       <table><thead><tr>
         <th>Identification No.</th><th>Material</th><th>Source</th><th class="num">Qty</th>
         <th>Received</th><th>Drawing</th><th></th></tr></thead>
@@ -2630,7 +2634,7 @@ function submitProductionPlan(){
 }
 function renderProductionRegister(main){
   main.innerHTML = pageHead('Production Plan Register', 'Every production plan, with status and machine/line assignment.') +
-    `<div class="panel"><div class="panel-body" style="padding:0;"><table><thead><tr>
+    `<div class="panel"><div class="panel-body scroll-table" style="padding:0;"><table><thead><tr>
       <th>Plan No.</th><th>Material</th><th>Linked SO</th><th class="num">Planned Qty</th><th class="num">Actual Qty</th>
       <th>Machine/Line</th><th>Start</th><th>Target End</th><th>Status</th><th></th></tr></thead>
       <tbody>${DB.productionPlans.length? DB.productionPlans.slice().reverse().map(p=>{
@@ -2821,7 +2825,7 @@ function renderBomRegister(main){
     ? `<button class="btn ghost" onclick="importLegacyBoms()">↻ Re-check Legacy BOM Import</button>`
     : `<button class="btn ghost" onclick="importLegacyBoms()">⇪ Import BOM Master Data (3)</button>`;
   main.innerHTML = pageHead('BOM Register', 'Every product recipe — parent product and its required components.', importBtn) +
-    `<div class="panel"><div class="panel-body" style="padding:0;"><table><thead><tr>
+    `<div class="panel"><div class="panel-body scroll-table" style="padding:0;"><table><thead><tr>
       <th>BOM No.</th><th>Parent Product</th><th class="num">Components</th><th></th></tr></thead>
       <tbody>${DB.boms.length? DB.boms.slice().reverse().map(b=>{
         const m = materialById(b.parentMaterialId);
@@ -2967,7 +2971,7 @@ function importLegacyBoms(){
 function renderAudit(main){
   main.innerHTML = pageHead('Monthly Stock Audit', 'Per KKI-QMS-06: stock auditing once a month, differences feed into CAPA.',
     `<button class="btn primary" onclick="openAuditForm()">+ New Audit</button>`) +
-    `<div class="panel"><div class="panel-body" style="padding:0;">
+    `<div class="panel"><div class="panel-body scroll-table" style="padding:0;">
       <table><thead><tr><th>Audit Date</th><th class="num">Materials Checked</th><th class="num">Differences Found</th><th></th></tr></thead>
       <tbody>${DB.audits.length? DB.audits.slice().reverse().map(a=>`<tr><td>${fmtDate(a.date)}</td>
         <td class="num">${a.items.length}</td><td class="num" style="${a.items.filter(i=>i.difference!==0).length?'color:var(--danger);font-weight:700;':''}">${a.items.filter(i=>i.difference!==0).length}</td>
