@@ -28,7 +28,10 @@ self.addEventListener('push', (event) => {
       body: data.body,
       icon: '/static/icon-192.png',
       badge: '/static/icon-192.png',
-      tag: 'kki-update',
+      // A unique tag per notification (instead of one fixed tag for all of
+      // them) so each new one stacks alongside earlier ones, instead of
+      // silently replacing whatever notification came before it.
+      tag: 'kki-update-' + Date.now() + '-' + Math.random().toString(36).slice(2),
     })
   );
 });
