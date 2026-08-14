@@ -1345,11 +1345,11 @@ function renderInwardNew(main){
 function addInwardRow(prefillMaterialId){
   const wrap = document.getElementById('inItems');
   const row = document.createElement('div'); row.className = 'irow';
-  row.innerHTML = `<select class="in-mat" onchange="onInwardRowMaterialChange(this)">${optionsFor(DB.materials,'id',m=>materialLabel(m))}</select>
-    <input class="in-qty" type="number" min="0" placeholder="Qty">
+  row.innerHTML = `<select class="in-mat" onchange="onInwardRowMaterialChange(this);refreshInwardPODetails();">${optionsFor(DB.materials,'id',m=>materialLabel(m))}</select>
+    <input class="in-qty" type="number" min="0" placeholder="Qty" oninput="refreshInwardPODetails();">
     <select class="in-loc">${optionsFor(DB.locations,'id',l=>l.rack+' / '+l.bin)}</select>
     <input class="in-expiry" type="date" title="Expiry Date (only if this material needs it)">
-    <button class="rm-row" onclick="this.parentElement.remove();">&times;</button>`;
+    <button class="rm-row" onclick="this.parentElement.remove();refreshInwardPODetails();">&times;</button>`;
   wrap.appendChild(row);
   if(prefillMaterialId) row.querySelector('.in-mat').value = prefillMaterialId;
   onInwardRowMaterialChange(row.querySelector('.in-mat'));
@@ -1394,22 +1394,34 @@ function populateInwardPOLink(){
   onInwardPOLinkChange();
 }
 function onInwardPOLinkChange(){
+  refreshInwardPODetails();
+}
+function refreshInwardPODetails(){
   const po = DB.purchaseOrders.find(p=>p.id===val('in_po_link'));
   const box = document.getElementById('in_po_details');
-  if(po){
-    document.getElementById('in_po').value = po.poNo;
-    if(box){
-      box.style.display = '';
-      box.innerHTML = `<b>Items on ${po.poNo}:</b><br>` + po.items.map(it=>{
-        const m = materialById(it.materialId);
-        const pending = Math.max(0, it.qty - it.receivedQty);
-        return `${m?escapeHtml(m.name):'?'} — ordered ${it.qty}, received ${it.receivedQty}, <b>${pending} still pending</b>`;
-      }).join('<br>');
+  if(!box) return;
+  if(!po){ box.style.display='none'; box.innerHTML=''; return; }
+  document.getElementById('in_po').value = po.poNo;
+  // Sum up whatever is currently typed into the item rows, per material,
+  // so this box can preview what pending will look like AFTER you save -
+  // not just what it looked like before you started filling this form in.
+  const typedByMaterial = {};
+  document.querySelectorAll('#inItems .irow').forEach(r=>{
+    const matId = r.querySelector('.in-mat').value;
+    const qty = +r.querySelector('.in-qty').value || 0;
+    if(matId && qty>0) typedByMaterial[matId] = (typedByMaterial[matId]||0) + qty;
+  });
+  box.style.display = '';
+  box.innerHTML = `<b>Items on ${po.poNo}:</b><br>` + po.items.map(it=>{
+    const m = materialById(it.materialId);
+    const pending = Math.max(0, it.qty - it.receivedQty);
+    const typed = typedByMaterial[it.materialId] || 0;
+    if(typed > 0){
+      const willRemain = Math.max(0, pending - typed);
+      return `${m?escapeHtml(m.name):'?'} — ${pending} pending → entering ${typed} now, <b style="color:${willRemain>0?'var(--danger)':'var(--good)'};">${willRemain} will remain pending</b>`;
     }
-  } else if(box){
-    box.style.display = 'none';
-    box.innerHTML = '';
-  }
+    return `${m?escapeHtml(m.name):'?'} — ordered ${it.qty}, received ${it.receivedQty}, <b>${pending} still pending</b>`;
+  }).join('<br>');
 }
 function openQuickAddMaterial(){
   modal('Quick Add Material', `
