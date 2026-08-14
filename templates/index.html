@@ -170,6 +170,11 @@
   .so-item-rows .irow{display:grid; grid-template-columns:2fr .8fr .8fr .7fr .9fr 28px; gap:8px; padding:8px;
     border-bottom:1px solid var(--line-soft); align-items:center;}
   .so-item-rows .irow:last-child{border-bottom:none;}
+  .in-item-rows{border:1px solid var(--line); border-radius:8px; overflow:hidden; margin-bottom:8px;}
+  .in-item-rows .irow{display:grid; grid-template-columns:2fr .7fr 1fr .9fr 28px; gap:8px; padding:8px;
+    border-bottom:1px solid var(--line-soft); align-items:center;}
+  .in-item-rows .irow:last-child{border-bottom:none;}
+  .in-item-rows .irow input, .in-item-rows .irow select{padding:6px 8px; font-size:12.5px;}
 
   .search-bar{display:flex; gap:8px; margin-bottom:14px;}
   .search-bar input{flex:1; padding:8px 12px; border:1px solid var(--line); border-radius:7px; font-size:13px;}
@@ -1296,7 +1301,6 @@ function changeBatchTag(batchId, newTag){
 
 /* ================= INWARD ================= */
 function renderInwardNew(main){
-  const matOpts = optionsFor(DB.materials,'id',m=>materialLabel(m));
   main.innerHTML = pageHead('New Material Inward', 'Material inward → document verification → inspection → GRN → identification → storage.') + `
     <div class="panel"><div class="panel-body">
       <div class="field"><label>Source Type *</label>
@@ -1316,17 +1320,15 @@ function renderInwardNew(main){
       <div id="in_po_details" class="section-note" style="display:none;margin:-8px 0 12px;"></div>
       <div class="field-row">
         <div class="field"><label>Challan No. *</label><input id="in_challan" placeholder="CH-XXXX"></div>
-      </div>
-      <div class="field-row">
         <div class="field"><label>Challan Date *</label><input id="in_date" type="date" value="${todayISO()}"></div>
-        <div class="field"><label>Material * <span class="link-btn" style="font-size:11px;margin-left:6px;" onclick="openQuickAddMaterial()">+ New Material</span></label><select id="in_material" onchange="onInwardMaterialChange()">${matOpts}</select></div>
       </div>
-      <div class="field-row">
-        <div class="field"><label>Quantity *</label><input id="in_qty" type="number" min="0"></div>
-        <div class="field"><label>Storage Location</label><select id="in_loc">${optionsFor(DB.locations,'id',l=>l.rack+' / '+l.bin)}</select></div>
-      </div>
-      <div class="field" id="in_expiryField" style="display:none;"><label>Expiry Date (auto from shelf life — adjust if needed)</label><input id="in_expiry" type="date"></div>
-      <div class="field"><label>Inspection Status *</label>
+
+      <div class="field"><label>Items <span class="link-btn" style="font-size:11px;margin-left:6px;" onclick="openQuickAddMaterial()">+ New Material</span></label></div>
+      <div class="muted" style="font-size:11px;margin:-4px 0 8px;">One delivery can cover several different materials — add a line for each. They'll each get their own Identification No. and batch, all under this same Challan No.</div>
+      <div id="inItems" class="in-item-rows"></div>
+      <button class="btn ghost" onclick="addInwardRow()" style="margin-bottom:14px;">+ Add material line</button>
+
+      <div class="field"><label>Inspection Status * <span class="muted" style="font-weight:400;font-size:11px;">(applies to every line above)</span></label>
         <div class="radio-group">
           <label><input type="radio" name="insp" value="Accepted" checked> Accepted</label>
           <label><input type="radio" name="insp" value="Pending Inspection"> Pending Inspection</label>
@@ -1336,8 +1338,38 @@ function renderInwardNew(main){
       <div class="field"><label>Remarks</label><textarea id="in_remarks" rows="2"></textarea></div>
       <button class="btn primary" onclick="submitInward()">Save Inward &amp; Generate GRN</button>
     </div></div>`;
-  onInwardMaterialChange();
+  document.getElementById('inItems').innerHTML = '';
+  addInwardRow();
   populateInwardPOLink();
+}
+function addInwardRow(prefillMaterialId){
+  const wrap = document.getElementById('inItems');
+  const row = document.createElement('div'); row.className = 'irow';
+  row.innerHTML = `<select class="in-mat" onchange="onInwardRowMaterialChange(this)">${optionsFor(DB.materials,'id',m=>materialLabel(m))}</select>
+    <input class="in-qty" type="number" min="0" placeholder="Qty">
+    <select class="in-loc">${optionsFor(DB.locations,'id',l=>l.rack+' / '+l.bin)}</select>
+    <input class="in-expiry" type="date" title="Expiry Date (only if this material needs it)">
+    <button class="rm-row" onclick="this.parentElement.remove();">&times;</button>`;
+  wrap.appendChild(row);
+  if(prefillMaterialId) row.querySelector('.in-mat').value = prefillMaterialId;
+  onInwardRowMaterialChange(row.querySelector('.in-mat'));
+}
+function onInwardRowMaterialChange(sel){
+  const row = sel.closest('.irow');
+  const mat = materialById(sel.value);
+  const expiryInput = row.querySelector('.in-expiry');
+  if(mat && mat.expiryApplicable){
+    expiryInput.style.display = '';
+    if(mat.shelfLifeDays>0 && !expiryInput.value){
+      const d = new Date(); d.setDate(d.getDate()+mat.shelfLifeDays);
+      expiryInput.value = d.toISOString().slice(0,10);
+    }
+  } else {
+    expiryInput.style.display = 'none';
+    expiryInput.value = '';
+  }
+  const locSel = row.querySelector('.in-loc');
+  if(mat && mat.locationId) locSel.value = mat.locationId;
 }
 function toggleInwardSource(){
   const s = document.querySelector('input[name=src]:checked').value;
@@ -1379,16 +1411,6 @@ function onInwardPOLinkChange(){
     box.innerHTML = '';
   }
 }
-function onInwardMaterialChange(){
-  const mat = materialById(val('in_material'));
-  const show = mat && mat.expiryApplicable;
-  document.getElementById('in_expiryField').style.display = show ? '' : 'none';
-  if(show && mat.shelfLifeDays>0){
-    const d = new Date(); d.setDate(d.getDate()+mat.shelfLifeDays);
-    document.getElementById('in_expiry').value = d.toISOString().slice(0,10);
-  }
-  if(mat && mat.locationId) document.getElementById('in_loc').value = mat.locationId;
-}
 function openQuickAddMaterial(){
   modal('Quick Add Material', `
     <div class="section-note">Just the essentials — you can add full extrusion specs, HSN, etc. later from Material Master.</div>
@@ -1407,50 +1429,60 @@ function submitQuickAddMaterial(){
   saveDB();
   closeModal();
   showToast(`Material added — ${m.name} (${m.code})`);
-  const sel = document.getElementById('in_material');
-  if(sel){
-    sel.innerHTML = optionsFor(DB.materials,'id',mm=>materialLabel(mm));
-    sel.value = m.id;
-    onInwardMaterialChange();
-  }
+  if(document.getElementById('inItems')) addInwardRow(m.id);
 }
 function submitInward(){
   const sourceType = document.querySelector('input[name=src]:checked').value;
-  const materialId = val('in_material');
-  const qty = +val('in_qty');
   const challan = val('in_challan').trim();
-  if(!materialId){ showToast('Select a material'); return; }
-  if(!qty || qty<=0){ showToast('Enter a valid quantity'); return; }
   if(!challan){ showToast('Challan No. is required'); return; }
   if(sourceType==='S' && !val('in_supplier')){ showToast('Select a supplier'); return; }
   if(sourceType==='C' && !val('in_customer')){ showToast('Select a customer'); return; }
-  const batch = doInward({
-    materialId, sourceType, supplierId: val('in_supplier'), customerId: val('in_customer'),
-    poNo: val('in_po'), challanNo: challan, challanDate: val('in_date')||todayISO(),
-    qty, locationId: val('in_loc'), inspectionStatus: document.querySelector('input[name=insp]:checked').value,
-    remarks: val('in_remarks'), expiryDate: val('in_expiry')
-  });
-  const poLinkId = val('in_po_link');
-  let poClosedMsg = '';
-  if(poLinkId){
-    const po = applyInwardToPO(poLinkId, materialId, qty);
-    if(po && po.status==='Closed') poClosedMsg = ` — ${po.poNo} is now fully received (Closed)`;
+  const rows = [...document.querySelectorAll('#inItems .irow')].map(r=>({
+    materialId: r.querySelector('.in-mat').value,
+    qty: +r.querySelector('.in-qty').value || 0,
+    locationId: r.querySelector('.in-loc').value,
+    expiryDate: r.querySelector('.in-expiry').value
+  })).filter(r=>r.materialId);
+  if(!rows.length){ showToast('Add at least one material line'); return; }
+  for(const r of rows){
+    if(!r.qty || r.qty<=0){ showToast(`Enter a valid quantity for ${materialById(r.materialId)?.name||'every material'}`); return; }
   }
+  const inspectionStatus = document.querySelector('input[name=insp]:checked').value;
+  const poLinkId = val('in_po_link');
+  const batches = [];
+  let poClosedMsg = '';
+  rows.forEach(r=>{
+    const batch = doInward({
+      materialId: r.materialId, sourceType, supplierId: val('in_supplier'), customerId: val('in_customer'),
+      poNo: val('in_po'), challanNo: challan, challanDate: val('in_date')||todayISO(),
+      qty: r.qty, locationId: r.locationId, inspectionStatus,
+      remarks: val('in_remarks'), expiryDate: r.expiryDate
+    });
+    batches.push(batch);
+    if(poLinkId){
+      const po = applyInwardToPO(poLinkId, r.materialId, r.qty);
+      if(po && po.status==='Closed') poClosedMsg = ` — ${po.poNo} is now fully received (Closed)`;
+    }
+  });
   saveDB();
-  showInwardConfirmation(batch);
-  notifyPush('New Inward', `${materialById(materialId)?.name||'Material'} — ${qty} received (${batch.identNo})${poClosedMsg}`);
+  showInwardConfirmation(batches);
+  if(batches.length===1){
+    const mat = materialById(batches[0].materialId);
+    notifyPush('New Inward', `${mat?mat.name:'Material'} — ${batches[0].qtyReceived} received (${batches[0].identNo})${poClosedMsg}`);
+  } else {
+    notifyPush('New Inward', `${batches.length} materials received under Challan ${challan}${poClosedMsg}`);
+  }
 }
-function showInwardConfirmation(batch){
-  const mat = materialById(batch.materialId);
+function showInwardConfirmation(batches){
+  const rowsHtml = batches.map(b=>{
+    const mat = materialById(b.materialId);
+    return `<tr><td>${b.grnNo}</td><td><span class="ident-badge">${b.identNo}</span></td><td>${escapeHtml(mat?mat.name:'')}</td>
+      <td class="num">${b.qtyReceived} ${mat?mat.unit:''}</td><td>${tagPill(b.tag)}</td></tr>`;
+  }).join('');
   modal('Inward Saved', `
-    <div class="kv">
-      <div class="k">Identification No.</div><div class="v"><span class="ident-badge">${batch.identNo}</span></div>
-      <div class="k">GRN No.</div><div class="v">${batch.grnNo}</div>
-      <div class="k">Material</div><div class="v">${escapeHtml(mat.name)}</div>
-      <div class="k">Quantity</div><div class="v">${batch.qtyReceived} ${mat.unit}</div>
-      <div class="k">Status</div><div class="v">${tagPill(batch.tag)}</div>
-    </div>
-    <div class="section-note" style="margin-top:14px;">Stock, storage location and batch record have been created automatically.</div>
+    <table><thead><tr><th>GRN No.</th><th>Identification No.</th><th>Material</th><th class="num">Qty</th><th>Status</th></tr></thead>
+      <tbody>${rowsHtml}</tbody></table>
+    <div class="section-note" style="margin-top:14px;">Stock, storage location and batch record${batches.length>1?'s have':' has'} been created automatically${batches.length>1?' — each material gets its own GRN No. and Identification No.':''}.</div>
   `, `<button class="btn ghost" onclick="closeModal();navigate('inward-new')">New Inward</button>
       <button class="btn primary" onclick="closeModal();navigate('inward-register')">View Inward Register</button>`);
 }
