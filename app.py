@@ -90,6 +90,16 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/sw.js")
+def service_worker():
+    """Serves the service worker from the ROOT path (not /static/sw.js).
+    This matters: a service worker can only control pages inside the same
+    folder it's served from, by default. Serving it from /static/ would
+    limit it to controlling only /static/* - never the actual app at /.
+    Serving from the root gives it the correct scope to cover everything."""
+    return app.send_static_file("sw.js"), 200, {"Content-Type": "application/javascript"}
+
+
 # ---------- Auth ----------
 @app.route("/api/login", methods=["POST"])
 def login():

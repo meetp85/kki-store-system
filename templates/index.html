@@ -3081,7 +3081,7 @@ function enterLiveMonitoring(){
 /* Register service worker (enables "Add to Home Screen" install + push) */
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/static/sw.js').catch(e=>console.error('SW registration failed', e));
+    navigator.serviceWorker.register('/sw.js', {scope: '/'}).catch(e=>console.error('SW registration failed', e));
   });
 }
 
