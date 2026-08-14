@@ -1315,7 +1315,7 @@ function renderInwardNew(main){
         <div class="field"><label>Against Purchase Order (optional)</label><select id="in_po_link" onchange="onInwardPOLinkChange()">
           <option value="">— None / not against a system PO —</option>
         </select></div>
-        <div class="field"><label>Purchase Order No. (reference text)</label><input id="in_po" placeholder="PO-XXXX"></div>
+        <div class="field"><label>Purchase Order No. <span class="muted" style="font-weight:400;">(auto-filled from the dropdown above — cannot be typed separately)</span></label><input id="in_po" placeholder="Select a PO above, or leave both blank" readonly style="background:var(--grey-tint);cursor:not-allowed;"></div>
       </div>
       <div id="in_po_details" class="section-note" style="display:none;margin:-8px 0 12px;"></div>
       <div class="field-row">
@@ -1399,8 +1399,12 @@ function onInwardPOLinkChange(){
 function refreshInwardPODetails(){
   const po = DB.purchaseOrders.find(p=>p.id===val('in_po_link'));
   const box = document.getElementById('in_po_details');
+  if(!po){
+    document.getElementById('in_po').value = '';
+    if(box){ box.style.display='none'; box.innerHTML=''; }
+    return;
+  }
   if(!box) return;
-  if(!po){ box.style.display='none'; box.innerHTML=''; return; }
   document.getElementById('in_po').value = po.poNo;
   // Sum up whatever is currently typed into the item rows, per material,
   // so this box can preview what pending will look like AFTER you save -
