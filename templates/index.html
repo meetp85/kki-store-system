@@ -1432,11 +1432,11 @@ function renderInwardNew(main){
   addInwardRow();
   populateInwardPOLink();
 }
-function addInwardRow(prefillMaterialId){
+function addInwardRow(prefillMaterialId, prefillQty){
   const wrap = document.getElementById('inItems');
   const row = document.createElement('div'); row.className = 'irow';
   row.innerHTML = `<select class="in-mat" onchange="onInwardRowMaterialChange(this);refreshInwardPODetails();">${optionsFor(DB.materials,'id',m=>materialLabel(m))}</select>
-    <input class="in-qty" type="number" min="0" placeholder="Qty" oninput="refreshInwardPODetails();">
+    <input class="in-qty" type="number" min="0" placeholder="Qty" value="${prefillQty!=null?prefillQty:''}" oninput="refreshInwardPODetails();">
     <select class="in-loc">${optionsFor(DB.locations,'id',l=>l.rack+' / '+l.bin)}</select>
     <input class="in-expiry" type="date" title="Expiry Date (only if this material needs it)">
     <button class="rm-row" onclick="this.parentElement.remove();refreshInwardPODetails();">&times;</button>`;
@@ -1486,6 +1486,16 @@ function populateInwardPOLink(){
 function onInwardPOLinkChange(){
   refreshInwardPODetails();
 }
+function autoFillFromPO(){
+  const po = DB.purchaseOrders.find(p=>p.id===val('in_po_link'));
+  if(!po) return;
+  const pending = po.items.filter(it => (it.qty - it.receivedQty) > 0);
+  if(!pending.length){ showToast('Nothing pending on this PO'); return; }
+  document.getElementById('inItems').innerHTML = '';
+  pending.forEach(it => addInwardRow(it.materialId, it.qty - it.receivedQty));
+  showToast(`Filled in ${pending.length} material line(s) directly from this PO — guaranteed correct materials`);
+  refreshInwardPODetails();
+}
 function refreshInwardPODetails(){
   const po = DB.purchaseOrders.find(p=>p.id===val('in_po_link'));
   const box = document.getElementById('in_po_details');
@@ -1515,7 +1525,7 @@ function refreshInwardPODetails(){
       return `${m?escapeHtml(m.name):'?'} — ${pending} pending → entering ${typed} now, <b style="color:${willRemain>0?'var(--danger)':'var(--good)'};">${willRemain} will remain pending</b>`;
     }
     return `${m?escapeHtml(m.name):'?'} — ordered ${it.qty}, received ${it.receivedQty}, <b>${pending} still pending</b>`;
-  }).join('<br>');
+  }).join('<br>') + `<div style="margin-top:10px;"><button class="btn sm primary" onclick="autoFillFromPO()">⬇ Auto-fill items from this PO</button> <span class="muted" style="font-size:11px;">— guarantees the exact right materials, no guessing from the dropdown</span></div>`;
 }
 function openQuickAddMaterial(){
   modal('Quick Add Material', `
