@@ -3102,8 +3102,11 @@ function renderQualityInspections(main){
           const needed = [];
           if(plan.inprocess) needed.push({label:'Inprocess', done: status.inprocess, fill:`startInspectionReportForBatch('${b.id}')`});
           if(plan.layout) needed.push({label:'Layout', done: status.layout, fill:`startLayoutReportForBatch('${b.id}')`});
-          statusCell = needed.map(n=>`${n.done?'✓':'○'} ${n.label}${n.done?'':` — <span class="link-btn" onclick="${n.fill}">Fill →</span>`}`).join('<br>');
-          const allDone = needed.length>0 && needed.every(n=>n.done);
+          statusCell = needed.length ? needed.map(n=>`${n.done?'✓':'○'} ${n.label}${n.done?'':` — <span class="link-btn" onclick="${n.fill}">Fill →</span>`}`).join('<br>') : `<span class="muted">None needed</span>`;
+          // An empty "needed" list means the user deliberately chose neither
+          // report for this batch - that should go straight to Approve/Reject,
+          // not get stuck saying "complete report(s) first" with nothing to complete.
+          const allDone = needed.every(n=>n.done);
           actionCell = allDone
             ? `<button class="btn sm primary" onclick="changeBatchTag('${b.id}','green')">✓ Approve</button> <button class="btn sm ghost" style="color:var(--danger);" onclick="openRejectPrompt('${b.id}')">✗ Reject</button>`
             : `<span class="muted" style="font-size:11.5px;">Complete report(s) first</span>`;
