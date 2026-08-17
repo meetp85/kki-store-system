@@ -179,6 +179,19 @@
     border-bottom:1px solid var(--line-soft); align-items:center;}
   .in-item-rows .irow:last-child{border-bottom:none;}
   .in-item-rows .irow input, .in-item-rows .irow select{padding:6px 8px; font-size:12.5px;}
+  .ir-rows{border:1px solid var(--line); border-radius:8px; overflow:hidden; margin-bottom:8px;}
+  .ir-rows .ir-row{display:grid; grid-template-columns:1.3fr 1.3fr 1fr 1.6fr .8fr 28px; gap:8px; padding:8px;
+    border-bottom:1px solid var(--line-soft); align-items:center;}
+  .ir-rows .ir-row:last-child{border-bottom:none;}
+  .ir-rows .ir-row input, .ir-rows .ir-row select{padding:6px 8px; font-size:12.5px;}
+  .lr-rows{border:1px solid var(--line); border-radius:8px; overflow:hidden; margin-bottom:8px;}
+  .lr-rows .lr-row{display:grid; grid-template-columns:.8fr 1.1fr 1.1fr .9fr 1.4fr .8fr 28px; gap:6px; padding:8px;
+    border-bottom:1px solid var(--line-soft); align-items:center;}
+  .lr-rows .lr-view-row{display:grid; grid-template-columns:1fr 28px; gap:8px; padding:8px;
+    background:var(--grey-tint); border-bottom:1px solid var(--line-soft); align-items:center;}
+  .lr-rows > div:last-child{border-bottom:none;}
+  .lr-rows input, .lr-rows select{padding:6px 8px; font-size:12px;}
+  .lr-view-label{font-weight:700;}
 
   .search-bar{display:flex; gap:8px; margin-bottom:14px;}
   .search-bar input{flex:1; padding:8px 12px; border:1px solid var(--line); border-radius:7px; font-size:13px;}
@@ -281,7 +294,8 @@ function emptyDB(){
     batches: [], transactions: [],
     requisitions: [], issues: [], outwards: [], scraps: [], audits: [],
     returnables: [], salesOrders: [], purchaseOrders: [], drawings: [], productionPlans: [], boms: [],
-    seq: { material:0, supplier:0, customer:0, batch:0, inward:0, grn:0, req:0, issue:0, outward:0, scrap:0, audit:0, returnable:0, salesOrder:0, purchaseOrder:0, drawing:0, productionPlan:0, bom:0 },
+    inspectionReports: [], layoutReports: [],
+    seq: { material:0, supplier:0, customer:0, batch:0, inward:0, grn:0, req:0, issue:0, outward:0, scrap:0, audit:0, returnable:0, salesOrder:0, purchaseOrder:0, drawing:0, productionPlan:0, bom:0, inspectionReport:0, layoutReport:0 },
     identCounters: {},
     tagDefs: [
       {code:'green', label:'Green — Approved / Usable', desc:'Material inspected & accepted. Available for issue.'},
@@ -682,6 +696,10 @@ const NAV = [
   ]},
   {group:'Quality', items:[
     {id:'quality-inspections', label:'Pending Inspections', ic:'✓', badgeKey:'pendingInspections'},
+    {id:'inspection-report-new', label:'New Inprocess Report', ic:'✎'},
+    {id:'inspection-report-register', label:'Inprocess Reports', ic:'≡'},
+    {id:'layout-report-new', label:'New Layout Report', ic:'✎'},
+    {id:'layout-report-register', label:'Layout Reports', ic:'≡'},
     {id:'drawing-new', label:'New Drawing', ic:'✎'},
     {id:'drawing-register', label:'Drawings Register', ic:'≡'},
   ]},
@@ -850,6 +868,8 @@ function render(){
     'purchaseorder-new': renderPurchaseOrderNew, 'purchaseorder-register': renderPurchaseOrderRegister,
     'drawing-new': renderDrawingNew, 'drawing-register': renderDrawingRegister,
     'quality-inspections': renderQualityInspections,
+    'inspection-report-new': renderInspectionReportNew, 'inspection-report-register': renderInspectionReportRegister,
+    'layout-report-new': renderLayoutReportNew, 'layout-report-register': renderLayoutReportRegister,
     'production-new': renderProductionNew, 'production-register': renderProductionRegister,
     'bom-new': renderBomNew, 'bom-register': renderBomRegister,
     audit: renderAudit, traceability: renderTraceability, reports: renderReports, kpi: renderKPI,
@@ -2500,6 +2520,298 @@ function doCreateDrawing(o){
   DB.drawings.push(rec);
   return rec;
 }
+/* ================= FIRST PIECE & INPROCESS INSPECTION REPORT (KKI/QAREC/31) ================= */
+function renderInspectionReportNew(main){
+  const editId = window.__editInspectionReportId; window.__editInspectionReportId = null;
+  const editing = editId ? DB.inspectionReports.find(r=>r.id===editId) : null;
+  main.innerHTML = pageHead(editing?`Edit Inprocess Report — ${editing.reportNo}`:'New First Piece & Inprocess Inspection Report', 'Doc No: KKI/QAREC/31 — shop-floor check during production.') + `
+    <div class="panel"><div class="panel-body">
+      <div class="field-row">
+        <div class="field"><label>Machine Name</label><input id="ir_machine" value="${editing?escapeHtml(editing.machineName||''):''}"></div>
+        <div class="field"><label>Operation No.</label><input id="ir_opno" placeholder="e.g. 30 (CNC 1ST)" value="${editing?escapeHtml(editing.operationNo||''):''}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Material *</label><select id="ir_material" onchange="onInspReportMaterialChange()">${optionsFor(DB.materials,'id',m=>materialLabel(m))}</select></div>
+        <div class="field"><label>Part No.</label><input id="ir_partno" placeholder="auto-fills from Material, editable"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Date</label><input id="ir_date" type="date" value="${editing?editing.date:todayISO()}"></div>
+        <div class="field"><label>Shift</label><input id="ir_shift" placeholder="e.g. A / Day / Night" value="${editing?escapeHtml(editing.shift||''):''}"></div>
+      </div>
+      <div class="field"><label>Operator Name</label><input id="ir_operator" value="${editing?escapeHtml(editing.operatorName||''):''}"></div>
+
+      <div class="field"><label>Parameters Checked</label></div>
+      <div id="irRows" class="ir-rows"></div>
+      <button class="btn ghost" onclick="addIRRow()" style="margin-bottom:14px;">+ Add parameter</button>
+
+      <div class="field"><label>Result *</label>
+        <div class="radio-group">
+          <label><input type="radio" name="ir_result" value="Accepted" ${!editing||editing.result==='Accepted'?'checked':''}> Accepted</label>
+          <label><input type="radio" name="ir_result" value="Rejected" ${editing&&editing.result==='Rejected'?'checked':''}> Rejected</label>
+        </div>
+      </div>
+      <div class="field"><label>Remark</label><textarea id="ir_remark" rows="2">${editing?escapeHtml(editing.remark||''):''}</textarea></div>
+      <div class="field-row">
+        <div class="field"><label>Operator Sign.</label><input id="ir_opsign" value="${editing?escapeHtml(editing.operatorSign||''):''}"></div>
+        <div class="field"><label>Checked By</label><input id="ir_checkedby" value="${editing?escapeHtml(editing.checkedBy||''):''}"></div>
+      </div>
+      <div class="field"><label>Approved By</label><input id="ir_approvedby" value="${editing?escapeHtml(editing.approvedBy||''):''}"></div>
+      <button class="btn primary" onclick="submitInspectionReport('${editId||''}')">${editing?'Save Changes':'Save Report'}</button>
+    </div></div>`;
+  document.getElementById('irRows').innerHTML = '';
+  if(editing && editing.rows.length){
+    editing.rows.forEach(r=>addIRRow(r));
+  } else {
+    addIRRow();
+  }
+  if(editing) document.getElementById('ir_material').value = editing.materialId;
+  if(editing) document.getElementById('ir_partno').value = editing.partNo||'';
+  if(!editing) onInspReportMaterialChange();
+}
+function onInspReportMaterialChange(){
+  const m = materialById(val('ir_material'));
+  const partNoField = document.getElementById('ir_partno');
+  if(m && partNoField && !partNoField.value) partNoField.value = m.partNo || m.code;
+}
+function addIRRow(prefill){
+  const wrap = document.getElementById('irRows');
+  const row = document.createElement('div'); row.className = 'ir-row';
+  row.innerHTML = `<input class="ir-param" placeholder="Parameter (e.g. Height)" value="${prefill?escapeHtml(prefill.parameter||''):''}">
+    <input class="ir-spec" placeholder="Specification (e.g. 22.00 ± 0.150)" value="${prefill?escapeHtml(prefill.specification||''):''}">
+    <input class="ir-instrument" placeholder="Instrument (e.g. Vernier)" value="${prefill?escapeHtml(prefill.instrument||''):''}">
+    <input class="ir-obs" placeholder="Observations (e.g. 22.05, 22.03, 21.98...)" value="${prefill?escapeHtml(prefill.observations||''):''}">
+    <select class="ir-rowresult"><option ${!prefill||prefill.rowResult==='OK'?'selected':''}>OK</option><option ${prefill&&prefill.rowResult==='NOT OK'?'selected':''}>NOT OK</option></select>
+    <button class="rm-row" onclick="this.parentElement.remove();">&times;</button>`;
+  wrap.appendChild(row);
+}
+function submitInspectionReport(editId){
+  const materialId = val('ir_material');
+  if(!materialId){ showToast('Select a material'); return; }
+  const rows = [...document.querySelectorAll('#irRows .ir-row')].map((r,i)=>({
+    srNo: i+1,
+    parameter: r.querySelector('.ir-param').value.trim(),
+    specification: r.querySelector('.ir-spec').value.trim(),
+    instrument: r.querySelector('.ir-instrument').value.trim(),
+    observations: r.querySelector('.ir-obs').value.trim(),
+    rowResult: r.querySelector('.ir-rowresult').value,
+  })).filter(r=>r.parameter);
+  if(!rows.length){ showToast('Add at least one parameter'); return; }
+  const data = {
+    docNo: 'KKI/QAREC/31', machineName: val('ir_machine'), operationNo: val('ir_opno'),
+    materialId, partNo: val('ir_partno'), date: val('ir_date')||todayISO(), shift: val('ir_shift'),
+    operatorName: val('ir_operator'), rows,
+    result: document.querySelector('input[name=ir_result]:checked').value,
+    remark: val('ir_remark'), operatorSign: val('ir_opsign'), checkedBy: val('ir_checkedby'), approvedBy: val('ir_approvedby'),
+  };
+  let rec;
+  if(editId){
+    rec = DB.inspectionReports.find(r=>r.id===editId);
+    Object.assign(rec, data);
+  } else {
+    DB.seq.inspectionReport++;
+    rec = { id:'ir_'+DB.seq.inspectionReport, reportNo: uid('IPR', DB.seq.inspectionReport), ...data };
+    DB.inspectionReports.push(rec);
+  }
+  saveDB();
+  showToast(`${editId?'Updated':'Saved'} — ${rec.reportNo} (${rec.result})`);
+  notifyPush(editId?'Inspection Report Updated':'New Inspection Report', `${rec.reportNo} — ${materialById(materialId)?.name||''} — ${rec.result}`);
+  navigate('inspection-report-register');
+}
+function renderInspectionReportRegister(main){
+  main.innerHTML = pageHead('First Piece & Inprocess Inspection Reports', 'Doc No: KKI/QAREC/31') +
+    `<div class="panel"><div class="panel-body scroll-table" style="padding:0;"><table><thead><tr>
+      <th>Report No.</th><th>Date</th><th>Material</th><th>Machine / Op No.</th><th>Operator</th><th>Result</th><th></th></tr></thead>
+      <tbody>${DB.inspectionReports.length? DB.inspectionReports.slice().reverse().map(r=>{
+        const m = materialById(r.materialId);
+        return `<tr><td class="mono">${r.reportNo}</td><td>${fmtDate(r.date)}</td><td>${escapeHtml(m?m.name:'')}</td>
+          <td>${escapeHtml(r.machineName||'—')} ${r.operationNo?'/ '+escapeHtml(r.operationNo):''}</td>
+          <td>${escapeHtml(r.operatorName||'—')}</td>
+          <td><span class="pill ${r.result==='Accepted'?'issued':'rejected'}">${r.result}</span></td>
+          <td><button class="link-btn" onclick="openInspectionReportView('${r.id}')">View →</button></td></tr>`;
+      }).join('') : `<tr class="empty-row"><td colspan="7">No reports yet. <span class="link-btn" onclick="navigate('inspection-report-new')">Create one</span></td></tr>`}</tbody></table>
+    </div></div>`;
+}
+function openInspectionReportView(id){
+  const r = DB.inspectionReports.find(x=>x.id===id);
+  if(!r) return;
+  const m = materialById(r.materialId);
+  modal(`${r.reportNo} — First Piece & Inprocess Inspection Report`, `
+    <div class="kv" style="margin-bottom:12px;">
+      <div class="k">Doc No.</div><div class="v">${r.docNo}</div>
+      <div class="k">Date</div><div class="v">${fmtDate(r.date)}</div>
+      <div class="k">Machine</div><div class="v">${escapeHtml(r.machineName||'—')}</div>
+      <div class="k">Operation No.</div><div class="v">${escapeHtml(r.operationNo||'—')}</div>
+      <div class="k">Shift</div><div class="v">${escapeHtml(r.shift||'—')}</div>
+      <div class="k">Operator</div><div class="v">${escapeHtml(r.operatorName||'—')}</div>
+      <div class="k">Part Name</div><div class="v">${escapeHtml(m?m.name:'')}</div>
+      <div class="k">Part No.</div><div class="v">${escapeHtml(r.partNo||'—')}</div>
+    </div>
+    <table><thead><tr><th>Sr.</th><th>Parameter</th><th>Specification</th><th>Instrument</th><th>Observations</th><th>Result</th></tr></thead>
+      <tbody>${r.rows.map(row=>`<tr><td>${row.srNo}</td><td>${escapeHtml(row.parameter)}</td><td>${escapeHtml(row.specification)}</td>
+        <td>${escapeHtml(row.instrument)}</td><td>${escapeHtml(row.observations)}</td>
+        <td><span class="pill ${row.rowResult==='OK'?'issued':'rejected'}">${row.rowResult}</span></td></tr>`).join('')}</tbody></table>
+    <div class="kv" style="margin-top:12px;">
+      <div class="k">Overall Result</div><div class="v"><span class="pill ${r.result==='Accepted'?'issued':'rejected'}">${r.result}</span></div>
+      <div class="k">Remark</div><div class="v">${escapeHtml(r.remark||'—')}</div>
+      <div class="k">Operator Sign.</div><div class="v">${escapeHtml(r.operatorSign||'—')}</div>
+      <div class="k">Checked By</div><div class="v">${escapeHtml(r.checkedBy||'—')}</div>
+      <div class="k">Approved By</div><div class="v">${escapeHtml(r.approvedBy||'—')}</div>
+    </div>
+  `, `<button class="btn ghost" onclick="closeModal()">Close</button><button class="btn primary" onclick="closeModal();window.__editInspectionReportId='${r.id}';navigate('inspection-report-new');">Edit</button>`);
+}
+
+/* ================= LAYOUT INSPECTION REPORT ================= */
+function renderLayoutReportNew(main){
+  const editId = window.__editLayoutReportId; window.__editLayoutReportId = null;
+  const editing = editId ? DB.layoutReports.find(r=>r.id===editId) : null;
+  main.innerHTML = pageHead(editing?`Edit Layout Report — ${editing.reportNo}`:'New Layout Inspection Report', 'Full-dimensional check against the drawing — typically for a new part, tool, or customer-required periodic re-validation.') + `
+    <div class="panel"><div class="panel-body">
+      <div class="field"><label>Customer Name</label><input id="lr_customer" value="${editing?escapeHtml(editing.customerName||''):''}"></div>
+      <div class="field-row">
+        <div class="field"><label>Material *</label><select id="lr_material" onchange="onLayoutReportMaterialChange()">${optionsFor(DB.materials,'id',m=>materialLabel(m))}</select></div>
+        <div class="field"><label>Part No.</label><input id="lr_partno" placeholder="auto-fills from Material, editable"></div>
+      </div>
+      <div class="field"><label>Date</label><input id="lr_date" type="date" value="${editing?editing.date:todayISO()}"></div>
+      <div class="field-row">
+        <div class="field"><label>Identifier</label><input id="lr_identifier" placeholder="e.g. Finished Part" value="${editing?escapeHtml(editing.identifier||''):''}"></div>
+        <div class="field"><label>Drawing No.</label><input id="lr_drawingno" value="${editing?escapeHtml(editing.drawingNo||''):''}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Revision</label><input id="lr_revision" value="${editing?escapeHtml(editing.revision||''):''}"></div>
+        <div class="field"><label>Material Spec.</label><input id="lr_matspec" placeholder="e.g. 50017 (Spectroscope / MTC Report)" value="${editing?escapeHtml(editing.materialSpec||''):''}"></div>
+      </div>
+      <div class="field"><label>Inspection Std.</label><input id="lr_inspstd" placeholder="e.g. 16071, 16197, 16352" value="${editing?escapeHtml(editing.inspStd||''):''}"></div>
+
+      <div class="field"><label>Dimensional Checks</label></div>
+      <div id="lrRows" class="lr-rows"></div>
+      <div style="margin-bottom:14px;">
+        <button class="btn ghost" onclick="addLRView()">+ Add View Section</button>
+        <button class="btn ghost" onclick="addLRRow()">+ Add Dimension Row</button>
+      </div>
+
+      <div class="field-row">
+        <div class="field"><label>Checked By</label><input id="lr_checkedby" value="${editing?escapeHtml(editing.checkedBy||''):''}"></div>
+        <div class="field"><label>Approved By</label><input id="lr_approvedby" value="${editing?escapeHtml(editing.approvedBy||''):''}"></div>
+      </div>
+      <button class="btn primary" onclick="submitLayoutReport('${editId||''}')">${editing?'Save Changes':'Save Report'}</button>
+    </div></div>`;
+  document.getElementById('lrRows').innerHTML = '';
+  if(editing && editing.items.length){
+    editing.items.forEach(it=> it.type==='view' ? addLRView(it.label) : addLRRow(it));
+  } else {
+    addLRView('VIEW A'); addLRRow();
+  }
+  if(editing) document.getElementById('lr_material').value = editing.materialId;
+  if(editing) document.getElementById('lr_partno').value = editing.partNo||'';
+  if(!editing) onLayoutReportMaterialChange();
+}
+function onLayoutReportMaterialChange(){
+  const m = materialById(val('lr_material'));
+  const partNoField = document.getElementById('lr_partno');
+  if(m && partNoField && !partNoField.value) partNoField.value = m.partNo || m.code;
+}
+function addLRView(label){
+  const wrap = document.getElementById('lrRows');
+  const row = document.createElement('div'); row.className = 'lr-view-row';
+  row.innerHTML = `<input class="lr-view-label" placeholder="View label (e.g. VIEW A)" value="${label?escapeHtml(label):''}">
+    <button class="rm-row" onclick="this.parentElement.remove();">&times;</button>`;
+  wrap.appendChild(row);
+}
+function addLRRow(prefill){
+  const wrap = document.getElementById('lrRows');
+  const row = document.createElement('div'); row.className = 'lr-row';
+  row.innerHTML = `<input class="lr-balloon" placeholder="Balloon No. (A1)" value="${prefill?escapeHtml(prefill.balloonNo||''):''}">
+    <input class="lr-char" placeholder="Characteristic (Depth)" value="${prefill?escapeHtml(prefill.characteristic||''):''}">
+    <input class="lr-spec" placeholder="Specification (6.35±0.127)" value="${prefill?escapeHtml(prefill.specification||''):''}">
+    <input class="lr-method" placeholder="Method (Vernier)" value="${prefill?escapeHtml(prefill.method||''):''}">
+    <input class="lr-obs" placeholder="Observations (10 samples)" value="${prefill?escapeHtml(prefill.observations||''):''}">
+    <select class="lr-remark"><option ${!prefill||prefill.remark==='OK'?'selected':''}>OK</option><option ${prefill&&prefill.remark==='NOT OK'?'selected':''}>NOT OK</option></select>
+    <button class="rm-row" onclick="this.parentElement.remove();">&times;</button>`;
+  wrap.appendChild(row);
+}
+function submitLayoutReport(editId){
+  const materialId = val('lr_material');
+  if(!materialId){ showToast('Select a material'); return; }
+  const items = [...document.querySelectorAll('#lrRows > div')].map(el=>{
+    if(el.classList.contains('lr-view-row')){
+      const label = el.querySelector('.lr-view-label').value.trim();
+      return label ? {type:'view', label} : null;
+    }
+    const balloonNo = el.querySelector('.lr-balloon').value.trim();
+    const characteristic = el.querySelector('.lr-char').value.trim();
+    if(!balloonNo && !characteristic) return null;
+    return { type:'row', balloonNo, characteristic,
+      specification: el.querySelector('.lr-spec').value.trim(),
+      method: el.querySelector('.lr-method').value.trim(),
+      observations: el.querySelector('.lr-obs').value.trim(),
+      remark: el.querySelector('.lr-remark').value };
+  }).filter(Boolean);
+  if(!items.some(it=>it.type==='row')){ showToast('Add at least one dimension row'); return; }
+  const data = {
+    customerName: val('lr_customer'), materialId, partNo: val('lr_partno'), date: val('lr_date')||todayISO(),
+    identifier: val('lr_identifier'), drawingNo: val('lr_drawingno'), revision: val('lr_revision'),
+    materialSpec: val('lr_matspec'), inspStd: val('lr_inspstd'), items,
+    checkedBy: val('lr_checkedby'), approvedBy: val('lr_approvedby'),
+  };
+  let rec;
+  if(editId){
+    rec = DB.layoutReports.find(r=>r.id===editId);
+    Object.assign(rec, data);
+  } else {
+    DB.seq.layoutReport++;
+    rec = { id:'lr_'+DB.seq.layoutReport, reportNo: uid('LIR', DB.seq.layoutReport), ...data };
+    DB.layoutReports.push(rec);
+  }
+  saveDB();
+  showToast(`${editId?'Updated':'Saved'} — ${rec.reportNo}`);
+  notifyPush(editId?'Layout Report Updated':'New Layout Report', `${rec.reportNo} — ${materialById(materialId)?.name||''}`);
+  navigate('layout-report-register');
+}
+function renderLayoutReportRegister(main){
+  main.innerHTML = pageHead('Layout Inspection Reports', 'Full-dimensional first-article / periodic re-validation reports.') +
+    `<div class="panel"><div class="panel-body scroll-table" style="padding:0;"><table><thead><tr>
+      <th>Report No.</th><th>Date</th><th>Material</th><th>Customer</th><th class="num">Dimensions Checked</th><th></th></tr></thead>
+      <tbody>${DB.layoutReports.length? DB.layoutReports.slice().reverse().map(r=>{
+        const m = materialById(r.materialId);
+        const rowCount = r.items.filter(it=>it.type==='row').length;
+        return `<tr><td class="mono">${r.reportNo}</td><td>${fmtDate(r.date)}</td><td>${escapeHtml(m?m.name:'')}</td>
+          <td>${escapeHtml(r.customerName||'—')}</td><td class="num">${rowCount}</td>
+          <td><button class="link-btn" onclick="openLayoutReportView('${r.id}')">View →</button></td></tr>`;
+      }).join('') : `<tr class="empty-row"><td colspan="6">No reports yet. <span class="link-btn" onclick="navigate('layout-report-new')">Create one</span></td></tr>`}</tbody></table>
+    </div></div>`;
+}
+function openLayoutReportView(id){
+  const r = DB.layoutReports.find(x=>x.id===id);
+  if(!r) return;
+  const m = materialById(r.materialId);
+  let rowsHtml = '';
+  r.items.forEach(it=>{
+    if(it.type==='view') rowsHtml += `<tr style="background:var(--grey-tint);"><td colspan="6"><b>${escapeHtml(it.label)}</b></td></tr>`;
+    else rowsHtml += `<tr><td>${escapeHtml(it.balloonNo)}</td><td>${escapeHtml(it.characteristic)}</td><td>${escapeHtml(it.specification)}</td>
+      <td>${escapeHtml(it.method)}</td><td>${escapeHtml(it.observations)}</td>
+      <td><span class="pill ${it.remark==='OK'?'issued':'rejected'}">${it.remark}</span></td></tr>`;
+  });
+  modal(`${r.reportNo} — Layout Inspection Report`, `
+    <div class="kv" style="margin-bottom:12px;">
+      <div class="k">Customer</div><div class="v">${escapeHtml(r.customerName||'—')}</div>
+      <div class="k">Part Name</div><div class="v">${escapeHtml(m?m.name:'')}</div>
+      <div class="k">Part No.</div><div class="v">${escapeHtml(r.partNo||'—')}</div>
+      <div class="k">Date</div><div class="v">${fmtDate(r.date)}</div>
+      <div class="k">Identifier</div><div class="v">${escapeHtml(r.identifier||'—')}</div>
+      <div class="k">Drawing No.</div><div class="v">${escapeHtml(r.drawingNo||'—')}</div>
+      <div class="k">Revision</div><div class="v">${escapeHtml(r.revision||'—')}</div>
+      <div class="k">Material Spec.</div><div class="v">${escapeHtml(r.materialSpec||'—')}</div>
+      <div class="k">Insp. Std.</div><div class="v">${escapeHtml(r.inspStd||'—')}</div>
+    </div>
+    <table><thead><tr><th>Balloon</th><th>Characteristic</th><th>Specification</th><th>Method</th><th>Observations</th><th>Remark</th></tr></thead>
+      <tbody>${rowsHtml}</tbody></table>
+    <div class="kv" style="margin-top:12px;">
+      <div class="k">Checked By</div><div class="v">${escapeHtml(r.checkedBy||'—')}</div>
+      <div class="k">Approved By</div><div class="v">${escapeHtml(r.approvedBy||'—')}</div>
+    </div>
+  `, `<button class="btn ghost" onclick="closeModal()">Close</button><button class="btn primary" onclick="closeModal();window.__editLayoutReportId='${r.id}';navigate('layout-report-new');">Edit</button>`);
+}
+
 function renderDrawingNew(main){
   main.innerHTml='';
   main.innerHTML = pageHead('New Drawing', 'Reference drawing for Quality to check the product against.') + `
