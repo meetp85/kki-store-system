@@ -185,8 +185,12 @@
   .ir-rows .ir-row:last-child{border-bottom:none;}
   .ir-rows .ir-row input, .ir-rows .ir-row select{padding:6px 8px; font-size:12.5px;}
   .lr-rows{border:1px solid var(--line); border-radius:8px; overflow:hidden; margin-bottom:8px;}
-  .lr-rows .lr-row{display:grid; grid-template-columns:.8fr 1.1fr 1.1fr .9fr 1.4fr .8fr 28px; gap:6px; padding:8px;
-    border-bottom:1px solid var(--line-soft); align-items:center;}
+  .lr-rows .lr-row-group{border-bottom:1px solid var(--line-soft);}
+  .lr-rows .lr-row{display:grid; grid-template-columns:.8fr 1.2fr 1.2fr 1fr .8fr 28px; gap:6px; padding:8px 8px 4px;
+    align-items:center;}
+  .lr-rows .lr-obs-row{display:flex; flex-wrap:wrap; gap:5px; padding:0 8px 8px; align-items:center;}
+  .lr-obs-label{font-size:11px; color:var(--ink-faint); margin-right:2px; white-space:nowrap;}
+  .lr-obs-box{width:52px; padding:5px 4px !important; font-size:11.5px !important; text-align:center;}
   .lr-rows .lr-view-row{display:grid; grid-template-columns:1fr 28px; gap:8px; padding:8px;
     background:var(--grey-tint); border-bottom:1px solid var(--line-soft); align-items:center;}
   .lr-rows > div:last-child{border-bottom:none;}
@@ -2733,15 +2737,29 @@ function addLRView(label){
 }
 function addLRRow(prefill){
   const wrap = document.getElementById('lrRows');
+  const group = document.createElement('div'); group.className = 'lr-row-group';
+  // Legacy reports stored observations as one comma-joined string - split it
+  // back out so old data still shows correctly in the 10 individual boxes.
+  let obsValues = [];
+  if(prefill && prefill.observations){
+    obsValues = Array.isArray(prefill.observations) ? prefill.observations : prefill.observations.split(',').map(s=>s.trim());
+  }
   const row = document.createElement('div'); row.className = 'lr-row';
   row.innerHTML = `<input class="lr-balloon" placeholder="Balloon No. (A1)" value="${prefill?escapeHtml(prefill.balloonNo||''):''}">
     <input class="lr-char" placeholder="Characteristic (Depth)" value="${prefill?escapeHtml(prefill.characteristic||''):''}">
     <input class="lr-spec" placeholder="Specification (6.35±0.127)" value="${prefill?escapeHtml(prefill.specification||''):''}">
     <input class="lr-method" placeholder="Method (Vernier)" value="${prefill?escapeHtml(prefill.method||''):''}">
-    <input class="lr-obs" placeholder="Observations (10 samples)" value="${prefill?escapeHtml(prefill.observations||''):''}">
     <select class="lr-remark"><option ${!prefill||prefill.remark==='OK'?'selected':''}>OK</option><option ${prefill&&prefill.remark==='NOT OK'?'selected':''}>NOT OK</option></select>
-    <button class="rm-row" onclick="this.parentElement.remove();">&times;</button>`;
-  wrap.appendChild(row);
+    <button class="rm-row" onclick="this.parentElement.parentElement.remove();">&times;</button>`;
+  const obsRow = document.createElement('div'); obsRow.className = 'lr-obs-row';
+  let obsBoxes = '<span class="lr-obs-label">Observations:</span>';
+  for(let i=0;i<10;i++){
+    obsBoxes += `<input class="lr-obs-box" placeholder="${i+1}" title="Sample ${i+1}" value="${obsValues[i]?escapeHtml(obsValues[i]):''}">`;
+  }
+  obsRow.innerHTML = obsBoxes;
+  group.appendChild(row);
+  group.appendChild(obsRow);
+  wrap.appendChild(group);
 }
 function submitLayoutReport(editId){
   const linkedBatchId = window.__linkedLayoutBatchId;
@@ -2752,14 +2770,17 @@ function submitLayoutReport(editId){
       const label = el.querySelector('.lr-view-label').value.trim();
       return label ? {type:'view', label} : null;
     }
-    const balloonNo = el.querySelector('.lr-balloon').value.trim();
-    const characteristic = el.querySelector('.lr-char').value.trim();
+    // el is a .lr-row-group wrapping the main fields row + the 10-box observations strip
+    const mainRow = el.querySelector('.lr-row');
+    const balloonNo = mainRow.querySelector('.lr-balloon').value.trim();
+    const characteristic = mainRow.querySelector('.lr-char').value.trim();
     if(!balloonNo && !characteristic) return null;
+    const observations = [...el.querySelectorAll('.lr-obs-box')].map(b=>b.value.trim());
     return { type:'row', balloonNo, characteristic,
-      specification: el.querySelector('.lr-spec').value.trim(),
-      method: el.querySelector('.lr-method').value.trim(),
-      observations: el.querySelector('.lr-obs').value.trim(),
-      remark: el.querySelector('.lr-remark').value };
+      specification: mainRow.querySelector('.lr-spec').value.trim(),
+      method: mainRow.querySelector('.lr-method').value.trim(),
+      observations,
+      remark: mainRow.querySelector('.lr-remark').value };
   }).filter(Boolean);
   if(!items.some(it=>it.type==='row')){ showToast('Add at least one dimension row'); return; }
   const data = {
@@ -2808,7 +2829,7 @@ function openLayoutReportView(id){
   r.items.forEach(it=>{
     if(it.type==='view') rowsHtml += `<tr style="background:var(--grey-tint);"><td colspan="6"><b>${escapeHtml(it.label)}</b></td></tr>`;
     else rowsHtml += `<tr><td>${escapeHtml(it.balloonNo)}</td><td>${escapeHtml(it.characteristic)}</td><td>${escapeHtml(it.specification)}</td>
-      <td>${escapeHtml(it.method)}</td><td>${escapeHtml(it.observations)}</td>
+      <td>${escapeHtml(it.method)}</td><td>${escapeHtml(Array.isArray(it.observations)?it.observations.filter(Boolean).join(', '):(it.observations||''))}</td>
       <td><span class="pill ${it.remark==='OK'?'issued':'rejected'}">${it.remark}</span></td></tr>`;
   });
   modal(`${r.reportNo} — Layout Inspection Report`, `
