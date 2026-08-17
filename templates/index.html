@@ -2528,7 +2528,7 @@ function renderInspectionReportNew(main){
   const linkedBatch = linkedBatchId ? DB.batches.find(b=>b.id===linkedBatchId) : null;
   main.innerHTML = pageHead(editing?`Edit Inprocess Report — ${editing.reportNo}`:(linkedBatch?`Inspection Report — ${linkedBatch.identNo}`:'New First Piece & Inprocess Inspection Report'), 'Doc No: KKI/QAREC/31 — shop-floor check during production.') + `
     <div class="panel"><div class="panel-body">
-      ${linkedBatch ? `<div class="section-note" style="background:var(--warn-tint,#FDF3E3);border-color:var(--warn,#D9A441);">This report is for batch <b>${linkedBatch.identNo}</b>, currently sitting in Pending Inspections. Saving this report will directly set the batch's result based on what you choose below — <b>Accepted → moves to usable stock</b>, <b>Rejected → blocked, offered for Scrap</b>. This isn't a separate step from approving/rejecting; it IS the approval/rejection.</div>` : ''}
+      ${linkedBatch ? `<div class="section-note" style="background:var(--warn-tint,#FDF3E3);border-color:var(--warn,#D9A441);">This report is for batch <b>${linkedBatch.identNo}</b>, currently sitting in Pending Inspections. The 'Result' below is this specific report's own finding — the actual batch Approve/Reject decision happens separately on Pending Inspections, once every report you chose for this batch is complete.</div>` : ''}
       <div class="field-row">
         <div class="field"><label>Machine Name</label><input id="ir_machine" value="${editing?escapeHtml(editing.machineName||''):''}"></div>
         <div class="field"><label>Operation No.</label><input id="ir_opno" placeholder="e.g. 30 (CNC 1ST)" value="${editing?escapeHtml(editing.operationNo||''):''}"></div>
@@ -2559,7 +2559,7 @@ function renderInspectionReportNew(main){
         <div class="field"><label>Checked By</label><input id="ir_checkedby" value="${editing?escapeHtml(editing.checkedBy||''):''}"></div>
       </div>
       <div class="field"><label>Approved By</label><input id="ir_approvedby" value="${editing?escapeHtml(editing.approvedBy||''):''}"></div>
-      <button class="btn primary" onclick="submitInspectionReport('${editId||''}')">${editing?'Save Changes':(linkedBatch?'Save Report & Apply Result to Batch':'Save Report')}</button>
+      <button class="btn primary" onclick="submitInspectionReport('${editId||''}')">${editing?'Save Changes':(linkedBatch?'Save Report':'Save Report')}</button>
     </div></div>`;
   document.getElementById('irRows').innerHTML = '';
   if(editing && editing.rows.length){
@@ -2623,8 +2623,6 @@ function submitInspectionReport(editId){
   if(linkedBatchId){
     window.__linkedInspectionBatchId = null;
     navigate('quality-inspections');
-    if(data.result === 'Rejected') openRejectPrompt(linkedBatchId);
-    else changeBatchTag(linkedBatchId, 'green');
   } else {
     navigate('inspection-report-register');
   }
@@ -2676,11 +2674,14 @@ function openInspectionReportView(id){
 function renderLayoutReportNew(main){
   const editId = window.__editLayoutReportId; window.__editLayoutReportId = null;
   const editing = editId ? DB.layoutReports.find(r=>r.id===editId) : null;
-  main.innerHTML = pageHead(editing?`Edit Layout Report — ${editing.reportNo}`:'New Layout Inspection Report', 'Full-dimensional check against the drawing — typically for a new part, tool, or customer-required periodic re-validation.') + `
+  const linkedBatchId = window.__linkedLayoutBatchId;
+  const linkedBatch = linkedBatchId ? DB.batches.find(b=>b.id===linkedBatchId) : null;
+  main.innerHTML = pageHead(editing?`Edit Layout Report — ${editing.reportNo}`:(linkedBatch?`Layout Report — ${linkedBatch.identNo}`:'New Layout Inspection Report'), 'Full-dimensional check against the drawing — typically for a new part, tool, or customer-required periodic re-validation.') + `
     <div class="panel"><div class="panel-body">
+      ${linkedBatch ? `<div class="section-note" style="background:var(--warn-tint,#FDF3E3);border-color:var(--warn,#D9A441);">This report is for batch <b>${linkedBatch.identNo}</b>, currently sitting in Pending Inspections. Saving it marks the Layout Report as done for this batch — the actual Approve/Reject decision happens separately once every report you chose for this batch is complete.</div>` : ''}
       <div class="field"><label>Customer Name</label><input id="lr_customer" value="${editing?escapeHtml(editing.customerName||''):''}"></div>
       <div class="field-row">
-        <div class="field"><label>Material *</label><select id="lr_material" onchange="onLayoutReportMaterialChange()">${optionsFor(DB.materials,'id',m=>materialLabel(m))}</select></div>
+        <div class="field"><label>Material *</label><select id="lr_material" onchange="onLayoutReportMaterialChange()" ${linkedBatch?'disabled':''}>${optionsFor(DB.materials,'id',m=>materialLabel(m))}</select></div>
         <div class="field"><label>Part No.</label><input id="lr_partno" placeholder="auto-fills from Material, editable"></div>
       </div>
       <div class="field"><label>Date</label><input id="lr_date" type="date" value="${editing?editing.date:todayISO()}"></div>
@@ -2715,6 +2716,7 @@ function renderLayoutReportNew(main){
   }
   if(editing) document.getElementById('lr_material').value = editing.materialId;
   if(editing) document.getElementById('lr_partno').value = editing.partNo||'';
+  if(linkedBatch) document.getElementById('lr_material').value = linkedBatch.materialId;
   if(!editing) onLayoutReportMaterialChange();
 }
 function onLayoutReportMaterialChange(){
@@ -2742,6 +2744,7 @@ function addLRRow(prefill){
   wrap.appendChild(row);
 }
 function submitLayoutReport(editId){
+  const linkedBatchId = window.__linkedLayoutBatchId;
   const materialId = val('lr_material');
   if(!materialId){ showToast('Select a material'); return; }
   const items = [...document.querySelectorAll('#lrRows > div')].map(el=>{
@@ -2762,7 +2765,7 @@ function submitLayoutReport(editId){
   const data = {
     customerName: val('lr_customer'), materialId, partNo: val('lr_partno'), date: val('lr_date')||todayISO(),
     identifier: val('lr_identifier'), drawingNo: val('lr_drawingno'), revision: val('lr_revision'),
-    materialSpec: val('lr_matspec'), inspStd: val('lr_inspstd'), items,
+    materialSpec: val('lr_matspec'), inspStd: val('lr_inspstd'), items, linkedBatchId: linkedBatchId||'',
     checkedBy: val('lr_checkedby'), approvedBy: val('lr_approvedby'),
   };
   let rec;
@@ -2777,7 +2780,12 @@ function submitLayoutReport(editId){
   saveDB();
   showToast(`${editId?'Updated':'Saved'} — ${rec.reportNo}`);
   notifyPush(editId?'Layout Report Updated':'New Layout Report', `${rec.reportNo} — ${materialById(materialId)?.name||''}`);
-  navigate('layout-report-register');
+  if(linkedBatchId){
+    window.__linkedLayoutBatchId = null;
+    navigate('quality-inspections');
+  } else {
+    navigate('layout-report-register');
+  }
 }
 function renderLayoutReportRegister(main){
   main.innerHTML = pageHead('Layout Inspection Reports', 'Full-dimensional first-article / periodic re-validation reports.') +
@@ -2873,32 +2881,70 @@ function drawingForMaterial(materialId){
   return DB.drawings.find(d=>d.materialId===materialId) || null;
 }
 
+function batchReportStatus(batchId){
+  return {
+    inprocess: DB.inspectionReports.some(r=>r.linkedBatchId===batchId),
+    layout: DB.layoutReports.some(r=>r.linkedBatchId===batchId),
+  };
+}
 function renderQualityInspections(main){
   const pending = DB.batches.filter(b=>b.tag==='yellow').slice().reverse();
-  main.innerHTML = pageHead('Pending Inspections', 'Material awaiting Quality review before it counts as usable stock. Filling in the Inspection Report is what actually Approves or Rejects each batch.') +
+  main.innerHTML = pageHead('Pending Inspections', 'Material awaiting Quality review before it counts as usable stock. Choose which report(s) this batch needs, complete them, then decide.') +
     `<div class="panel"><div class="panel-body scroll-table" style="padding:0;">
       <table><thead><tr>
         <th>Identification No.</th><th>Material</th><th>Source</th><th class="num">Qty</th>
-        <th>Received</th><th>Drawing</th><th></th></tr></thead>
+        <th>Received</th><th>Reports Needed</th><th></th></tr></thead>
       <tbody>${pending.length? pending.map(b=>{
         const m = materialById(b.materialId);
         const source = b.sourceType==='S' ? supplierById(b.supplierId)?.name : (b.sourceType==='P' ? 'Own Production' : customerById(b.customerId)?.name);
-        const dwg = m ? drawingForMaterial(m.id) : null;
+        const plan = b.inspectionPlan;
+        let statusCell, actionCell;
+        if(!plan){
+          statusCell = `<span class="muted">Not chosen yet</span>`;
+          actionCell = `<button class="btn sm primary" onclick="openSelectReportsModal('${b.id}')">▶ Start Inspection</button>`;
+        } else {
+          const status = batchReportStatus(b.id);
+          const needed = [];
+          if(plan.inprocess) needed.push({label:'Inprocess', done: status.inprocess, fill:`startInspectionReportForBatch('${b.id}')`});
+          if(plan.layout) needed.push({label:'Layout', done: status.layout, fill:`startLayoutReportForBatch('${b.id}')`});
+          statusCell = needed.map(n=>`${n.done?'✓':'○'} ${n.label}${n.done?'':` — <span class="link-btn" onclick="${n.fill}">Fill →</span>`}`).join('<br>');
+          const allDone = needed.length>0 && needed.every(n=>n.done);
+          actionCell = allDone
+            ? `<button class="btn sm primary" onclick="changeBatchTag('${b.id}','green')">✓ Approve</button> <button class="btn sm ghost" style="color:var(--danger);" onclick="openRejectPrompt('${b.id}')">✗ Reject</button>`
+            : `<span class="muted" style="font-size:11.5px;">Complete report(s) first</span>`;
+        }
         return `<tr>
           <td><span class="ident-badge">${b.identNo}</span></td><td>${escapeHtml(m?m.name:'')}</td>
           <td>${escapeHtml(source||'—')}</td><td class="num">${b.qtyRemaining} ${m?m.unit:''}</td>
           <td>${fmtDate(b.receivedDate)}</td>
-          <td>${dwg ? `${escapeHtml(dwg.drawingNo)}${dwg.fileId?` — <a href="/api/file/${dwg.fileId}" target="_blank">📄 View</a>`:''}` : '<span class="muted">No drawing</span>'}</td>
-          <td>
-            <button class="btn sm primary" onclick="startInspectionReportForBatch('${b.id}')">📋 Fill Inspection Report →</button>
-          </td>
+          <td style="font-size:12px;">${statusCell}</td>
+          <td>${actionCell}</td>
         </tr>`;
       }).join('') : `<tr class="empty-row"><td colspan="7">Nothing pending inspection right now.</td></tr>`}</tbody></table>
     </div></div>`;
 }
+function openSelectReportsModal(batchId){
+  modal('Which reports does this batch need?', `
+    <div class="section-note">Pick whichever applies — you can select one, both, or if you skip both and click Continue, it'll just go straight to Approve/Reject with no report required.</div>
+    <div class="field"><label><input type="checkbox" id="sel_inprocess" checked> First Piece & Inprocess Inspection Report (KKI/QAREC/31)</label></div>
+    <div class="field"><label><input type="checkbox" id="sel_layout"> Layout Inspection Report (full-dimensional)</label></div>
+  `, `<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="confirmReportSelection('${batchId}')">Continue</button>`);
+}
+function confirmReportSelection(batchId){
+  const b = DB.batches.find(x=>x.id===batchId);
+  if(!b) return;
+  b.inspectionPlan = { inprocess: document.getElementById('sel_inprocess').checked, layout: document.getElementById('sel_layout').checked };
+  saveDB();
+  closeModal();
+  renderQualityInspections(document.getElementById('main'));
+}
 function startInspectionReportForBatch(batchId){
   window.__linkedInspectionBatchId = batchId;
   navigate('inspection-report-new');
+}
+function startLayoutReportForBatch(batchId){
+  window.__linkedLayoutBatchId = batchId;
+  navigate('layout-report-new');
 }
 
 /* ================= PRODUCTION PLAN ================= */
