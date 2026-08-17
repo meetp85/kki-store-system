@@ -297,9 +297,9 @@ function emptyDB(){
     materials: [], suppliers: [], customers: [], locations: [],
     batches: [], transactions: [],
     requisitions: [], issues: [], outwards: [], scraps: [], audits: [],
-    returnables: [], salesOrders: [], purchaseOrders: [], drawings: [], productionPlans: [], boms: [],
+    returnables: [], salesOrders: [], purchaseOrders: [], purchaseRequisitions: [], drawings: [], productionPlans: [], boms: [],
     inspectionReports: [], layoutReports: [],
-    seq: { material:0, supplier:0, customer:0, batch:0, inward:0, grn:0, req:0, issue:0, outward:0, scrap:0, audit:0, returnable:0, salesOrder:0, purchaseOrder:0, drawing:0, productionPlan:0, bom:0, inspectionReport:0, layoutReport:0 },
+    seq: { material:0, supplier:0, customer:0, batch:0, inward:0, grn:0, req:0, issue:0, outward:0, scrap:0, audit:0, returnable:0, salesOrder:0, purchaseOrder:0, purchaseReq:0, drawing:0, productionPlan:0, bom:0, inspectionReport:0, layoutReport:0 },
     identCounters: {},
     tagDefs: [
       {code:'green', label:'Green — Approved / Usable', desc:'Material inspected & accepted. Available for issue.'},
@@ -591,7 +591,8 @@ function doCreatePurchaseOrder(o){
   const rec = {
     id:'po_'+DB.seq.purchaseOrder, poNo, date:o.date||todayISO(), supplierId:o.supplierId,
     linkedSalesOrderId:o.linkedSalesOrderId||'', expectedDeliveryDate:o.expectedDeliveryDate||'',
-    items: o.items.map(it=>({...it, receivedQty:0})), remarks:o.remarks||'', status:'Open'
+    items: o.items.map(it=>({...it, receivedQty:0})), remarks:o.remarks||'', status:'Open',
+    linkedRequisitionId: o.linkedRequisitionId||''
   };
   DB.purchaseOrders.push(rec);
   return rec;
@@ -695,7 +696,8 @@ const NAV = [
     {id:'salesorder-register', label:'Sales Order Register', ic:'≡'},
   ]},
   {group:'Purchase', items:[
-    {id:'purchaseorder-new', label:'New Purchase Order', ic:'✎'},
+    {id:'purchasereq-new', label:'New Purchase Requisition', ic:'✎'},
+    {id:'purchasereq-register', label:'Purchase Requisitions', ic:'≡', badgeKey:'purchaseReqPending'},
     {id:'purchaseorder-register', label:'Purchase Order Register', ic:'≡', badgeKey:'poOverdue'},
   ]},
   {group:'Quality', items:[
@@ -769,6 +771,7 @@ function badgeCounts(){
     pendingReq: DB.requisitions.filter(r=>r.status==='Pending').length,
     returnableOverdue: DB.returnables.filter(r=>r.status!=='Closed' && r.expectedReturnDate && daysBetween(todayISO(), r.expectedReturnDate) < 0).length,
     poOverdue: DB.purchaseOrders.filter(p=>p.status!=='Closed' && p.expectedDeliveryDate && daysBetween(todayISO(), p.expectedDeliveryDate) < 0).length,
+    purchaseReqPending: DB.purchaseRequisitions.filter(p=>p.status==='Pending').length,
     pendingInspections: DB.batches.filter(b=>b.tag==='yellow').length,
     productionOverdue: DB.productionPlans.filter(p=>p.status!=='Completed' && p.endDate && daysBetween(todayISO(), p.endDate) < 0).length,
   };
@@ -869,6 +872,7 @@ function render(){
     'scrap-new': renderScrapNew, 'scrap-register': renderScrapRegister,
     'returnable-new': renderReturnableNew, 'returnable-register': renderReturnableRegister,
     'salesorder-new': renderSalesOrderNew, 'salesorder-register': renderSalesOrderRegister,
+    'purchasereq-new': renderPurchaseReqNew, 'purchasereq-register': renderPurchaseReqRegister,
     'purchaseorder-new': renderPurchaseOrderNew, 'purchaseorder-register': renderPurchaseOrderRegister,
     'drawing-new': renderDrawingNew, 'drawing-register': renderDrawingRegister,
     'quality-inspections': renderQualityInspections,
@@ -2252,7 +2256,7 @@ function soRecalc(){
       const shortOnes = reqs.filter(r=>r.short);
       html += `<div class="section-note" style="margin-bottom:8px;"><b>Raw material needed for ${it.qty} × ${escapeHtml(m?m.name:'')}</b> (per BOM ${bom.bomNo}):<br>` +
         reqs.map(r=>`${escapeHtml(r.name)} — need ${r.required.toFixed(3)} ${r.unit}, available ${r.available} <span style="color:${r.short?'var(--danger)':'var(--good)'};font-weight:600;">${r.short?'⚠ short':'✓ OK'}</span>`).join('<br>') +
-        (shortOnes.length ? `<div style="margin-top:8px;"><button class="btn sm primary" onclick='createPOFromShortfall(${idx})'>🛒 Create Purchase Order for Shortfall</button></div>` : '') +
+        (shortOnes.length ? `<div style="margin-top:8px;"><button class="btn sm primary" onclick='createPOFromShortfall(${idx})'>📝 Raise Purchase Requisition for Shortfall</button></div>` : '') +
         `</div>`;
     });
     bomBox.innerHTML = html;
@@ -2291,12 +2295,13 @@ function createPOFromShortfall(idx){
   const shortItems = reqCache && reqCache[idx] ? reqCache[idx] : [];
   if(!shortItems.length){ showToast('Nothing short for this line'); return; }
   // Save the Sales Order FIRST - clicking this must never discard what was
-  // typed in. Only once it's safely created do we carry it forward to the PO.
+  // typed in. Only once it's safely created do we carry it forward.
   const rec = trySaveCurrentSalesOrder();
   if(!rec) return; // validation failed - toast already shown, stay on this form
-  window.__pendingPOPrefill = { linkedSalesOrderId: rec.id, items: shortItems };
-  showToast(`Sales Order ${rec.soNo} created — now create the Purchase Order`);
-  navigate('purchaseorder-new');
+  window.__pendingPrefillPR = { items: shortItems };
+  window.__pendingPRLinkedSO = rec.id;
+  showToast(`Sales Order ${rec.soNo} created — now raise a Purchase Requisition for the shortfall`);
+  navigate('purchasereq-new');
 }
 function submitSalesOrder(){
   const rec = trySaveCurrentSalesOrder();
@@ -2332,7 +2337,7 @@ function soBomCheckHtml(so){
     const shortOnes = reqs.filter(r=>r.short);
     html += `<div class="section-note no-print" style="margin:10px 0;"><b>Raw material check for ${it.qty} × ${escapeHtml(m?m.name:'')}</b> (per BOM ${bom.bomNo}, live stock):<br>` +
       reqs.map(r=>`${escapeHtml(r.name)} — need ${r.required.toFixed(3)} ${r.unit}, available ${r.available} <span style="color:${r.short?'var(--danger)':'var(--good)'};font-weight:600;">${r.short?'⚠ short':'✓ OK'}</span>`).join('<br>') +
-      (shortOnes.length ? `<div style="margin-top:8px;"><button class="btn sm primary" onclick="createPOFromSOShortfall('${so.id}',${idx})">🛒 Create Purchase Order for Shortfall</button></div>` : '') +
+      (shortOnes.length ? `<div style="margin-top:8px;"><button class="btn sm primary" onclick="createPOFromSOShortfall('${so.id}',${idx})">📝 Raise Purchase Requisition for Shortfall</button></div>` : '') +
       `</div>`;
   });
   return html;
@@ -2346,9 +2351,10 @@ function createPOFromSOShortfall(soId, idx){
   if(!bom) return;
   const shortItems = computeBOMRequirement(bom, it.qty).filter(r=>r.short).map(r=>({materialId:r.materialId, qty:+(r.required-r.available).toFixed(3), unit:r.unit}));
   if(!shortItems.length){ showToast('Nothing short for this line'); return; }
-  window.__pendingPOPrefill = { linkedSalesOrderId: soId, items: shortItems };
+  window.__pendingPrefillPR = { items: shortItems };
+  window.__pendingPRLinkedSO = soId;
   closeModal();
-  navigate('purchaseorder-new');
+  navigate('purchasereq-new');
 }
 function openSalesOrderView(id){
   const so = DB.salesOrders.find(x=>x.id===id);
@@ -2388,10 +2394,163 @@ function openSalesOrderView(id){
 }
 
 /* ================= PURCHASE ORDER ================= */
-function renderPurchaseOrderNew(main){
-  const openSOs = DB.salesOrders.filter(so=>so.status!=='Closed');
-  main.innerHTML = pageHead('New Purchase Order', 'Order raw material from a supplier — e.g. to cover a shortfall flagged on a Sales Order.') + `
+/* ================= PURCHASE REQUISITION (approval gate before any PO) ================= */
+function doCreatePurchaseReq(o){
+  DB.seq.purchaseReq++;
+  const prNo = uid('PR', DB.seq.purchaseReq);
+  const rec = {
+    id:'pr_'+DB.seq.purchaseReq, prNo, date:o.date||todayISO(), requestedBy:o.requestedBy||'',
+    department:o.department||'', urgency:o.urgency||'Normal', items:o.items, remarks:o.remarks||'',
+    linkedSalesOrderId:o.linkedSalesOrderId||'', status:'Pending', approvedBy:'', approvalDate:'',
+    rejectReason:'', purchaseOrderId:''
+  };
+  DB.purchaseRequisitions.push(rec);
+  return rec;
+}
+function renderPurchaseReqNew(main){
+  main.innerHTML = pageHead('New Purchase Requisition', 'Raise a need for raw material — a Purchase person reviews and approves before any order is actually placed.') + `
     <div class="panel"><div class="panel-body">
+      <div class="field-row">
+        <div class="field"><label>Requested By *</label><input id="pr_requestedby" placeholder="Your name"></div>
+        <div class="field"><label>Department</label><input id="pr_department" placeholder="e.g. Store, Production"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Date</label><input id="pr_date" type="date" value="${todayISO()}"></div>
+        <div class="field"><label>Urgency</label>
+          <select id="pr_urgency"><option>Normal</option><option>Urgent</option></select>
+        </div>
+      </div>
+      <div class="field"><label>Items Needed</label></div>
+      <div id="prItems" class="so-item-rows"></div>
+      <button class="btn ghost" onclick="addPrRow()" style="margin-bottom:14px;">+ Add material line</button>
+      <div class="field"><label>Reason / Justification</label><textarea id="pr_remarks" rows="2"></textarea></div>
+      <button class="btn primary" onclick="submitPurchaseReq()">Submit for Approval</button>
+    </div></div>`;
+  document.getElementById('prItems').innerHTML = '';
+  const prefill = window.__pendingPrefillPR;
+  if(prefill && prefill.items && prefill.items.length){
+    prefill.items.forEach(pi=>addPrRow(pi.materialId, pi.qty));
+    window.__pendingPrefillPR = null;
+    showToast(`Pre-filled ${prefill.items.length} short component(s)`);
+  } else {
+    addPrRow();
+  }
+}
+function addPrRow(prefillMaterialId, prefillQty){
+  const wrap = document.getElementById('prItems');
+  const row = document.createElement('div'); row.className = 'irow';
+  row.innerHTML = `<select class="pr-mat">${optionsFor(DB.materials,'id',m=>materialLabel(m))}</select>
+    <input class="pr-qty" type="number" min="0" step="0.001" placeholder="Qty" value="${prefillQty!=null?prefillQty:''}">
+    <input class="pr-rate" type="number" min="0" step="0.01" placeholder="Est. Rate (optional)">
+    <span></span><span></span>
+    <button class="rm-row" onclick="this.parentElement.remove();">&times;</button>`;
+  wrap.appendChild(row);
+  if(prefillMaterialId) row.querySelector('.pr-mat').value = prefillMaterialId;
+}
+function submitPurchaseReq(){
+  const requestedBy = val('pr_requestedby').trim();
+  if(!requestedBy){ showToast('Enter your name under Requested By'); return; }
+  const items = [...document.querySelectorAll('#prItems .irow')].map(r=>({
+    materialId: r.querySelector('.pr-mat').value,
+    qty: +r.querySelector('.pr-qty').value || 0,
+    rate: +r.querySelector('.pr-rate').value || 0,
+  })).filter(it=>it.materialId && it.qty>0);
+  if(!items.length){ showToast('Add at least one material line with quantity'); return; }
+  const rec = doCreatePurchaseReq({
+    requestedBy, department: val('pr_department'), date: val('pr_date'), urgency: val('pr_urgency'),
+    items, remarks: val('pr_remarks'), linkedSalesOrderId: window.__pendingPRLinkedSO || ''
+  });
+  window.__pendingPRLinkedSO = null;
+  saveDB();
+  showToast(`Submitted — ${rec.prNo} (Pending approval)`);
+  notifyPush('New Purchase Requisition', `${rec.prNo} — raised by ${requestedBy}`);
+  navigate('purchasereq-register');
+}
+function renderPurchaseReqRegister(main){
+  main.innerHTML = pageHead('Purchase Requisitions', 'Raised needs, awaiting or already given approval, before any Purchase Order can be created.') +
+    `<div class="panel"><div class="panel-body scroll-table" style="padding:0;"><table><thead><tr>
+      <th>PR No.</th><th>Date</th><th>Requested By</th><th>Items</th><th>Status</th><th></th></tr></thead>
+      <tbody>${DB.purchaseRequisitions.length? DB.purchaseRequisitions.slice().reverse().map(pr=>{
+        const itemsSummary = pr.items.map(it=>{ const m = materialById(it.materialId); return `${m?m.name:'?'} (${it.qty})`; }).join(', ');
+        const statusClass = pr.status==='Approved' ? 'issued' : pr.status==='Rejected' ? 'rejected' : 'pending';
+        let actionCell = '';
+        if(pr.status==='Pending'){
+          actionCell = `<button class="btn sm primary" onclick="openApprovePRModal('${pr.id}')">✓ Approve</button> <button class="btn sm ghost" style="color:var(--danger);" onclick="openRejectPRModal('${pr.id}')">✗ Reject</button>`;
+        } else if(pr.status==='Approved' && !pr.purchaseOrderId){
+          actionCell = `<button class="btn sm primary" onclick="startPOFromRequisition('${pr.id}')">Create Purchase Order →</button>`;
+        } else if(pr.purchaseOrderId){
+          const po = DB.purchaseOrders.find(p=>p.id===pr.purchaseOrderId);
+          actionCell = po ? `<span class="muted">→ ${po.poNo}</span>` : '';
+        } else if(pr.status==='Rejected'){
+          actionCell = `<span class="muted" title="${escapeHtml(pr.rejectReason||'')}">Rejected</span>`;
+        }
+        return `<tr><td class="mono">${pr.prNo}</td><td>${fmtDate(pr.date)}</td><td>${escapeHtml(pr.requestedBy)}</td>
+          <td style="font-size:12px;">${escapeHtml(itemsSummary)}</td>
+          <td><span class="pill ${statusClass}">${pr.status}</span></td>
+          <td>${actionCell}</td></tr>`;
+      }).join('') : `<tr class="empty-row"><td colspan="6">No requisitions yet. <span class="link-btn" onclick="navigate('purchasereq-new')">Raise one</span></td></tr>`}</tbody></table>
+    </div></div>`;
+}
+function openApprovePRModal(id){
+  modal('Approve Purchase Requisition', `
+    <div class="field"><label>Approved By (Purchase) *</label><input id="pr_approver_name" placeholder="Your name"></div>
+  `, `<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="confirmApprovePR('${id}')">Approve</button>`);
+}
+function confirmApprovePR(id){
+  const name = val('pr_approver_name').trim();
+  if(!name){ showToast('Enter your name'); return; }
+  const pr = DB.purchaseRequisitions.find(x=>x.id===id);
+  if(!pr) return;
+  pr.status = 'Approved'; pr.approvedBy = name; pr.approvalDate = todayISO();
+  saveDB(); closeModal();
+  showToast(`${pr.prNo} approved by ${name}`);
+  notifyPush('Purchase Requisition Approved', `${pr.prNo} approved by ${name}`);
+  renderPurchaseReqRegister(document.getElementById('main'));
+}
+function openRejectPRModal(id){
+  modal('Reject Purchase Requisition', `
+    <div class="field"><label>Rejected By *</label><input id="pr_rejector_name" placeholder="Your name"></div>
+    <div class="field"><label>Reason</label><textarea id="pr_reject_reason" rows="2"></textarea></div>
+  `, `<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn primary" style="background:var(--danger);" onclick="confirmRejectPR('${id}')">Reject</button>`);
+}
+function confirmRejectPR(id){
+  const name = val('pr_rejector_name').trim();
+  if(!name){ showToast('Enter your name'); return; }
+  const pr = DB.purchaseRequisitions.find(x=>x.id===id);
+  if(!pr) return;
+  pr.status = 'Rejected'; pr.approvedBy = name; pr.approvalDate = todayISO(); pr.rejectReason = val('pr_reject_reason');
+  saveDB(); closeModal();
+  showToast(`${pr.prNo} rejected`);
+  notifyPush('Purchase Requisition Rejected', `${pr.prNo} rejected by ${name}`);
+  renderPurchaseReqRegister(document.getElementById('main'));
+}
+function startPOFromRequisition(id){
+  const pr = DB.purchaseRequisitions.find(x=>x.id===id);
+  if(!pr) return;
+  window.__approvedRequisitionId = id;
+  window.__pendingPOPrefill = { linkedSalesOrderId: pr.linkedSalesOrderId||'', items: pr.items };
+  navigate('purchaseorder-new');
+}
+
+function renderPurchaseOrderNew(main){
+  const reqId = window.__approvedRequisitionId;
+  const req = reqId ? DB.purchaseRequisitions.find(r=>r.id===reqId) : null;
+  if(!req || req.status!=='Approved'){
+    main.innerHTML = pageHead('New Purchase Order', 'Order raw material from a supplier.') + `
+      <div class="panel"><div class="panel-body">
+        <div class="section-note" style="background:#FDECEC;border-color:#F5B5B5;">
+          <b style="color:var(--danger);">Purchase Orders can only be created from an approved Purchase Requisition.</b>
+          <div style="margin-top:6px;font-size:12.5px;">Go to Purchase Requisitions, raise one (or find an existing Approved one), then click "Create Purchase Order →" from there.</div>
+        </div>
+        <button class="btn primary" style="margin-top:14px;" onclick="navigate('purchasereq-new')">Raise a Purchase Requisition</button>
+        <button class="btn ghost" style="margin-top:14px;" onclick="navigate('purchasereq-register')">View Purchase Requisitions</button>
+      </div></div>`;
+    return;
+  }
+  const openSOs = DB.salesOrders.filter(so=>so.status!=='Closed');
+  main.innerHTML = pageHead('New Purchase Order', `Order raw material from a supplier — approved from Purchase Requisition ${req.prNo}.`) + `
+    <div class="panel"><div class="panel-body">
+      <div class="section-note">Linked to approved Purchase Requisition <b>${req.prNo}</b> (approved by ${escapeHtml(req.approvedBy||'—')}).</div>
       <div class="field-row">
         <div class="field"><label>Supplier *</label><select id="po_supplier">${optionsFor(DB.suppliers,'id',s=>s.name)}</select></div>
         <div class="field"><label>Linked Sales Order (optional)</label><select id="po_so" onchange="onPOSOLinkChange()">
@@ -2410,7 +2569,7 @@ function renderPurchaseOrderNew(main){
       <button class="btn ghost" onclick="addPoRow()" style="margin-bottom:14px;">+ Add material line</button>
 
       <div class="field"><label>Remarks</label><textarea id="po_remarks" rows="2"></textarea></div>
-      <button class="btn primary" onclick="submitPurchaseOrder()">Create Purchase Order</button>
+      <button class="btn primary" onclick="submitPurchaseOrder('${req.id}')">Create Purchase Order</button>
     </div></div>`;
   document.getElementById('poItems').innerHTML='';
   const prefill = window.__pendingPOPrefill;
@@ -2421,7 +2580,7 @@ function renderPurchaseOrderNew(main){
       const soSel = document.getElementById('po_so');
       if(soSel){ soSel.value = prefill.linkedSalesOrderId; onPOSOLinkChange(); }
     }
-    showToast(`Pre-filled ${prefill.items.length} short component(s) — review quantities & pick a supplier`);
+    showToast(`Pre-filled ${prefill.items.length} item(s) from ${req.prNo} — review quantities & pick a supplier`);
     window.__pendingPOPrefill = null;
   } else {
     addPoRow();
@@ -2445,7 +2604,7 @@ function addPoRow(prefillMaterialId, prefillQty){
   wrap.appendChild(row);
   if(prefillMaterialId) row.querySelector('.po-mat').value = prefillMaterialId;
 }
-function submitPurchaseOrder(){
+function submitPurchaseOrder(reqId){
   const supplierId = val('po_supplier');
   if(!supplierId){ showToast('Select a supplier'); return; }
   const items = [...document.querySelectorAll('#poItems .irow')].map(r=>({
@@ -2456,8 +2615,14 @@ function submitPurchaseOrder(){
   if(!items.length){ showToast('Add at least one material line with quantity'); return; }
   const rec = doCreatePurchaseOrder({
     supplierId, linkedSalesOrderId: val('po_so'), date: val('po_date'),
-    expectedDeliveryDate: val('po_expected'), remarks: val('po_remarks'), items
+    expectedDeliveryDate: val('po_expected'), remarks: val('po_remarks'), items,
+    linkedRequisitionId: reqId || ''
   });
+  if(reqId){
+    const req = DB.purchaseRequisitions.find(r=>r.id===reqId);
+    if(req) req.purchaseOrderId = rec.id;
+    window.__approvedRequisitionId = null;
+  }
   saveDB();
   showToast(`Purchase Order created — ${rec.poNo}`);
   notifyPush('New Purchase Order', `${rec.poNo} raised to ${supplierById(supplierId)?.name||'supplier'}`);
@@ -2481,7 +2646,7 @@ function renderPurchaseOrderRegister(main){
           <td><span class="pill ${statusClass}">${po.status}</span></td>
           <td><button class="link-btn" onclick="openPurchaseOrderView('${po.id}')">View / Print →</button></td>
         </tr>`;
-      }).join('') : `<tr class="empty-row"><td colspan="7">No purchase orders yet. <span class="link-btn" onclick="navigate('purchaseorder-new')">Create one</span></td></tr>`}</tbody></table>
+      }).join('') : `<tr class="empty-row"><td colspan="7">No purchase orders yet. <span class="link-btn" onclick="navigate('purchasereq-new')">Raise a Purchase Requisition</span> to start one.</td></tr>`}</tbody></table>
     </div></div>`;
 }
 function openPurchaseOrderView(id){
