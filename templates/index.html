@@ -3044,19 +3044,21 @@ function doCreateBom(o){
   DB.boms.push(rec);
   return rec;
 }
-function doProductionReceipt(plan, actualQty){
+function doProductionReceipt(plan, actualQty, inspectionStatus){
   const date = todayISO();
   const { identNo } = nextIdentificationNo(date, 'P');
   DB.seq.batch++;
+  const status = inspectionStatus || 'Pending Inspection';
+  const tag = status==='Accepted' ? 'green' : status==='Rejected' ? 'red' : 'yellow';
   const batch = {
     id:'batch_'+DB.seq.batch, identNo, grnNo:'', inwardNo:'',
     materialId: plan.materialId, sourceType:'P', supplierId:'', customerId:'',
     poNo:'', challanNo: plan.planNo, challanDate:date, receivedDate:date,
     qtyReceived:actualQty, qtyRemaining:actualQty, locationId: materialById(plan.materialId)?.locationId||'',
-    inspectionStatus:'Pending Inspection', tag:'yellow', expiryDate:'', remarks:`Produced against ${plan.planNo}`
+    inspectionStatus: status, tag, expiryDate:'', remarks:`Produced against ${plan.planNo}`
   };
   DB.batches.push(batch);
-  logTxn({date, materialId:plan.materialId, batchId:batch.id, type:'Production Receipt', ref:plan.planNo, qtyIn:0, remarks:`${actualQty} produced, pending inspection`});
+  logTxn({date, materialId:plan.materialId, batchId:batch.id, type:'Production Receipt', ref:plan.planNo, qtyIn:0, remarks:`${actualQty} produced — ${status}`});
   return batch;
 }
 function openCompleteProduction(id){
@@ -3064,7 +3066,7 @@ function openCompleteProduction(id){
   if(!p) return;
   modal(`Complete — ${p.planNo}`, `
     <div class="field"><label>Actual Quantity Produced</label><input id="pp_actual" type="number" min="0" value="${p.plannedQty}" oninput="updateShortfallHint('${p.id}')"></div>
-    <div class="section-note">Planned quantity was ${p.plannedQty}. The Actual Quantity becomes new stock (pending Quality inspection, same as any other inward). If Actual is less than Planned, the difference is logged as Scrap so it's never silently lost.</div>
+    <div class="section-note">Planned quantity was ${p.plannedQty}. If Actual is less than Planned, the difference is logged as Scrap so it's never silently lost.</div>
     <div id="pp_shortfall_box" style="display:none;">
       <div class="field"><label>Reason for shortfall</label>
         <select id="pp_shortfall_reason">
@@ -3074,6 +3076,14 @@ function openCompleteProduction(id){
           <option value="Other">Other</option>
         </select>
       </div>
+    </div>
+    <div class="field"><label>Inspection Status *</label>
+      <div class="radio-group">
+        <label><input type="radio" name="pp_insp" value="Accepted"> Accepted</label>
+        <label><input type="radio" name="pp_insp" value="Pending Inspection" checked> Pending Inspection</label>
+        <label><input type="radio" name="pp_insp" value="Rejected"> Rejected</label>
+      </div>
+      <div class="section-note" style="margin-top:6px;">Choose 'Accepted' only if this was already checked and passed on the shop floor. Otherwise leave on 'Pending Inspection' — it'll show up in Quality → Pending Inspections for sign-off, and won't count as usable stock until then.</div>
     </div>
   `, `<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="confirmCompleteProduction('${id}')">Mark Completed</button>`);
   updateShortfallHint(id);
@@ -3090,11 +3100,12 @@ function confirmCompleteProduction(id){
   if(!p) return;
   const actual = +val('pp_actual')||0;
   const shortfall = Math.max(0, p.plannedQty - actual);
+  const inspectionStatus = document.querySelector('input[name=pp_insp]:checked').value;
   p.actualQty = actual;
   p.status = 'Completed';
   let batch = null;
   if(actual > 0){
-    batch = doProductionReceipt(p, actual);
+    batch = doProductionReceipt(p, actual, inspectionStatus);
   }
   if(shortfall > 0){
     const reason = val('pp_shortfall_reason') || 'Other';
@@ -3102,8 +3113,9 @@ function confirmCompleteProduction(id){
       reason: `Production shortfall (${reason}) — ${p.planNo}`, department:'Production', approvedBy:'', disposalMethod:'' });
   }
   saveDB(); closeModal();
-  showToast(`${p.planNo}: Completed — ${actual} produced${batch?` (${batch.identNo}, pending inspection)`:''}${shortfall?`, ${shortfall} logged as scrap`:''}`);
-  notifyPush('Production Completed', `${p.planNo} (${materialById(p.materialId)?.name||''}) — ${actual} produced${shortfall?`, ${shortfall} scrap`:''}`);
+  const statusMsg = inspectionStatus==='Accepted' ? 'accepted, now in stock' : inspectionStatus==='Rejected' ? 'rejected' : 'pending inspection';
+  showToast(`${p.planNo}: Completed — ${actual} produced${batch?` (${batch.identNo}, ${statusMsg})`:''}${shortfall?`, ${shortfall} logged as scrap`:''}`);
+  notifyPush('Production Completed', `${p.planNo} (${materialById(p.materialId)?.name||''}) — ${actual} produced, ${statusMsg}${shortfall?`, ${shortfall} scrap`:''}`);
   renderProductionRegister(document.getElementById('main'));
 }
 
