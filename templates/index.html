@@ -2641,7 +2641,7 @@ function renderInspectionReportRegister(main){
           <td>${escapeHtml(r.machineName||'—')} ${r.operationNo?'/ '+escapeHtml(r.operationNo):''}</td>
           <td>${escapeHtml(r.operatorName||'—')}</td>
           <td><span class="pill ${r.result==='Accepted'?'issued':'rejected'}">${r.result}</span></td>
-          <td><button class="link-btn" onclick="openInspectionReportView('${r.id}')">View →</button></td></tr>`;
+          <td><button class="link-btn" onclick="openInspectionReportView('${r.id}')">View →</button> · <button class="link-btn" onclick="downloadInspectionReportExcel('${r.id}')">⬇ Excel</button></td></tr>`;
       }).join('') : `<tr class="empty-row"><td colspan="7">No reports yet. <span class="link-btn" onclick="navigate('inspection-report-new')">Create one</span></td></tr>`}</tbody></table>
     </div></div>`;
 }
@@ -2671,7 +2671,7 @@ function openInspectionReportView(id){
       <div class="k">Checked By</div><div class="v">${escapeHtml(r.checkedBy||'—')}</div>
       <div class="k">Approved By</div><div class="v">${escapeHtml(r.approvedBy||'—')}</div>
     </div>
-  `, `<button class="btn ghost" onclick="closeModal()">Close</button><button class="btn primary" onclick="closeModal();window.__editInspectionReportId='${r.id}';navigate('inspection-report-new');">Edit</button>`);
+  `, `<button class="btn ghost" onclick="closeModal()">Close</button><button class="btn ghost" onclick="downloadInspectionReportExcel('${r.id}')">⬇ Download Excel</button><button class="btn primary" onclick="closeModal();window.__editInspectionReportId='${r.id}';navigate('inspection-report-new');">Edit</button>`);
 }
 
 /* ================= LAYOUT INSPECTION REPORT ================= */
@@ -2817,7 +2817,7 @@ function renderLayoutReportRegister(main){
         const rowCount = r.items.filter(it=>it.type==='row').length;
         return `<tr><td class="mono">${r.reportNo}</td><td>${fmtDate(r.date)}</td><td>${escapeHtml(m?m.name:'')}</td>
           <td>${escapeHtml(r.customerName||'—')}</td><td class="num">${rowCount}</td>
-          <td><button class="link-btn" onclick="openLayoutReportView('${r.id}')">View →</button></td></tr>`;
+          <td><button class="link-btn" onclick="openLayoutReportView('${r.id}')">View →</button> · <button class="link-btn" onclick="downloadLayoutReportExcel('${r.id}')">⬇ Excel</button></td></tr>`;
       }).join('') : `<tr class="empty-row"><td colspan="6">No reports yet. <span class="link-btn" onclick="navigate('layout-report-new')">Create one</span></td></tr>`}</tbody></table>
     </div></div>`;
 }
@@ -2850,7 +2850,7 @@ function openLayoutReportView(id){
       <div class="k">Checked By</div><div class="v">${escapeHtml(r.checkedBy||'—')}</div>
       <div class="k">Approved By</div><div class="v">${escapeHtml(r.approvedBy||'—')}</div>
     </div>
-  `, `<button class="btn ghost" onclick="closeModal()">Close</button><button class="btn primary" onclick="closeModal();window.__editLayoutReportId='${r.id}';navigate('layout-report-new');">Edit</button>`);
+  `, `<button class="btn ghost" onclick="closeModal()">Close</button><button class="btn ghost" onclick="downloadLayoutReportExcel('${r.id}')">⬇ Download Excel</button><button class="btn primary" onclick="closeModal();window.__editLayoutReportId='${r.id}';navigate('layout-report-new');">Edit</button>`);
 }
 
 function renderDrawingNew(main){
@@ -3536,6 +3536,64 @@ function exportCSV(rows, filename){
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href=url; a.download=filename; a.click(); URL.revokeObjectURL(url);
   showToast('Downloaded '+filename);
+}
+function downloadInspectionReportExcel(id){
+  const r = DB.inspectionReports.find(x=>x.id===id);
+  if(!r) return;
+  const m = materialById(r.materialId);
+  const aoa = [
+    [DB.settings.companyName],
+    ['FIRST PIECE & INPROCESS INSPECTION REPORT'],
+    ['Doc No:', r.docNo],
+    [],
+    ['Machine Name', r.machineName||'', '', 'Operation No.', r.operationNo||''],
+    ['Part Name', m?m.name:'', '', 'Part No.', r.partNo||''],
+    ['Date', fmtDate(r.date), '', 'Shift', r.shift||''],
+    ['Operator Name', r.operatorName||''],
+    [],
+    ['Sr.', 'Parameter', 'Specification', 'Instrument', 'Observations', 'Result'],
+    ...r.rows.map(row=>[row.srNo, row.parameter, row.specification, row.instrument, row.observations, row.rowResult]),
+    [],
+    ['Overall Result', r.result],
+    ['Remark', r.remark||''],
+    ['Operator Sign.', r.operatorSign||'', '', 'Checked By', r.checkedBy||''],
+    ['Approved By', r.approvedBy||''],
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{wch:16},{wch:20},{wch:18},{wch:16},{wch:24},{wch:10}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Inprocess Report');
+  XLSX.writeFile(wb, `${r.reportNo}_${(m?m.name:'Report').replace(/[^a-z0-9]/gi,'_')}.xlsx`);
+  showToast(`Downloaded ${r.reportNo}.xlsx`);
+}
+function downloadLayoutReportExcel(id){
+  const r = DB.layoutReports.find(x=>x.id===id);
+  if(!r) return;
+  const m = materialById(r.materialId);
+  const aoa = [
+    [DB.settings.companyName],
+    ['LAYOUT INSPECTION REPORT'],
+    ['Customer Name', r.customerName||''],
+    ['Part Name', m?m.name:'', '', 'Part No.', r.partNo||'', '', 'Date', fmtDate(r.date)],
+    ['Identifier', r.identifier||'', '', 'Drawing No.', r.drawingNo||'', '', 'Revision', r.revision||''],
+    ['Material Spec.', r.materialSpec||'', '', 'Insp. Std.', r.inspStd||''],
+    [],
+    ['Balloon No.', 'Product Characteristic', 'Specification (MM)', 'Evaluation Method',
+     '1','2','3','4','5','6','7','8','9','10', 'Remark'],
+  ];
+  r.items.forEach(it=>{
+    if(it.type==='view'){ aoa.push([it.label]); return; }
+    const obs = Array.isArray(it.observations) ? it.observations : (it.observations||'').split(',').map(s=>s.trim());
+    aoa.push([it.balloonNo, it.characteristic, it.specification, it.method, ...obs.slice(0,10), '', it.remark]);
+  });
+  aoa.push([]);
+  aoa.push(['Checked By', r.checkedBy||'', '', 'Approved By', r.approvedBy||'']);
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{wch:12},{wch:20},{wch:18},{wch:16},...Array(10).fill({wch:8}),{wch:10}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Layout Report');
+  XLSX.writeFile(wb, `${r.reportNo}_${(m?m.name:'Report').replace(/[^a-z0-9]/gi,'_')}.xlsx`);
+  showToast(`Downloaded ${r.reportNo}.xlsx`);
 }
 
 /* ================= KPI ================= */
