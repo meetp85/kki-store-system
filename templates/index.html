@@ -231,7 +231,15 @@
   .icon-btn:hover{background:var(--grey-tint); color:var(--ink);}
 
   /* MOBILE / RESPONSIVE */
-  .mobile-menu-btn{display:none; position:fixed; top:12px; left:12px; z-index:70; background:var(--sidebar);
+  /* iOS PWAs (viewport-fit=cover + apple-mobile-web-app-capable) let content
+     render underneath the notch/status bar/Dynamic Island unless we push
+     fixed-position elements down using the safe-area-inset - otherwise a
+     button positioned at a fixed "top:12px" can end up partly or fully
+     behind that unclickable system UI on an iPhone. */
+  .mobile-menu-btn{display:none; position:fixed;
+    top:calc(12px + env(safe-area-inset-top, 0px));
+    left:calc(12px + env(safe-area-inset-left, 0px));
+    z-index:70; background:var(--sidebar);
     color:#fff; border:none; width:40px; height:40px; border-radius:9px; font-size:18px; align-items:center;
     justify-content:center; box-shadow:var(--shadow); cursor:pointer;}
   .mobile-menu-btn.hide{display:none !important;}
@@ -241,9 +249,10 @@
   @media (max-width: 860px){
     .mobile-menu-btn{display:flex;}
     #sidebar{position:fixed; top:0; left:0; height:100vh; z-index:65; width:250px; flex:0 0 250px;
-      transform:translateX(-100%); transition:transform .22s ease; box-shadow:3px 0 20px rgba(0,0,0,.28);}
+      transform:translateX(-100%); transition:transform .22s ease; box-shadow:3px 0 20px rgba(0,0,0,.28);
+      padding-top:env(safe-area-inset-top, 0px);}
     #sidebar.open{transform:translateX(0);}
-    #main{padding:64px 14px 50px; width:100%;}
+    #main{padding:calc(64px + env(safe-area-inset-top, 0px)) 14px 50px; width:100%;}
     .cards4,.cards3,.cards2{grid-template-columns:repeat(2,1fr);}
     .topbar{flex-direction:column; align-items:flex-start; gap:10px;}
     .topbar > div:last-child{display:flex; flex-wrap:wrap; gap:8px;}
