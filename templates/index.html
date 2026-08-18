@@ -2212,7 +2212,7 @@ function addSoRow(){
   const row = document.createElement('div'); row.className='irow';
   row.innerHTML = `<select class="so-mat" onchange="soRowMaterialChange(this);soRecalc();">${optionsFor(DB.materials,'id',m=>materialLabel(m))}</select>
     <input class="so-qty" type="number" min="0" placeholder="Qty" oninput="soRowMaterialChange(this.closest('.irow').querySelector('.so-mat'));soRecalc();">
-    <input class="so-rate" type="number" min="0" step="0.01" placeholder="Rate" oninput="soRecalc()">
+    <input class="so-rate" type="number" min="0" step="0.01" placeholder="Rate (optional)" oninput="soRecalc()">
     <input class="so-gst" type="number" min="0" step="0.01" placeholder="GST %" value="18" oninput="soRecalc()">
     <span class="muted so-hsn" style="font-size:10.5px;line-height:1.5;"></span>
     <button class="rm-row" onclick="this.parentElement.remove();soRecalc();">&times;</button>`;
@@ -2285,9 +2285,6 @@ function trySaveCurrentSalesOrder(){
   if(!customerId){ showToast('Select a customer'); return null; }
   const items = soReadItems();
   if(!items.length){ showToast('Add at least one material line with quantity'); return null; }
-  for(const it of items){
-    if(it.rate<=0){ showToast('Enter a Rate for every item line'); return null; }
-  }
   const rec = doCreateSalesOrder({
     customerId, customerPoNo: val('so_po'), date: val('so_date'), deliveryDate: val('so_delivery'),
     paymentTerms: val('so_terms'), remarks: val('so_remarks'), items
