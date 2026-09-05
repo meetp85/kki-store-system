@@ -307,7 +307,7 @@ function emptyDB(){
     batches: [], transactions: [],
     requisitions: [], issues: [], outwards: [], scraps: [], audits: [],
     returnables: [], salesOrders: [], purchaseOrders: [], purchaseRequisitions: [], drawings: [], productionPlans: [], boms: [],
-    inspectionReports: [], layoutReports: [],
+    inspectionReports: [], layoutReports: [], inprocessTemplates: [], layoutTemplates: [],
     seq: { material:0, supplier:0, customer:0, batch:0, inward:0, grn:0, req:0, issue:0, outward:0, scrap:0, audit:0, returnable:0, salesOrder:0, purchaseOrder:0, purchaseReq:0, drawing:0, productionPlan:0, bom:0, inspectionReport:0, layoutReport:0 },
     identCounters: {},
     tagDefs: [
@@ -2709,7 +2709,7 @@ function renderInspectionReportNew(main){
         <div class="field"><label>Operation No.</label><input id="ir_opno" placeholder="e.g. 30 (CNC 1ST)" value="${editing?escapeHtml(editing.operationNo||''):''}"></div>
       </div>
       <div class="field-row">
-        <div class="field"><label>Material *</label><select id="ir_material" onchange="onInspReportMaterialChange()" ${linkedBatch?'disabled':''}>${optionsFor(DB.materials,'id',m=>materialLabel(m))}</select></div>
+        <div class="field"><label>Material *</label><select id="ir_material" onchange="onInspReportMaterialChange();tryLoadInprocessTemplate(false);" ${linkedBatch?'disabled':''}>${optionsFor(DB.materials,'id',m=>materialLabel(m))}</select></div>
         <div class="field"><label>Part No.</label><input id="ir_partno" placeholder="auto-fills from Material, editable"></div>
       </div>
       <div class="field-row">
@@ -2718,7 +2718,8 @@ function renderInspectionReportNew(main){
       </div>
       <div class="field"><label>Operator Name</label><input id="ir_operator" value="${editing?escapeHtml(editing.operatorName||''):''}"></div>
 
-      <div class="field"><label>Parameters Checked</label></div>
+      <div class="field"><label>Parameters Checked ${!editing?`<span class="link-btn" style="font-size:11px;margin-left:6px;" onclick="saveInprocessTemplate()">💾 Save as Template for this Material</span>`:''}</label></div>
+      <div class="muted" style="font-size:11px;margin:-4px 0 8px;">If this material already has a saved template, picking it above auto-fills these rows — just fill in Observations and Result.</div>
       <div id="irRows" class="ir-rows"></div>
       <button class="btn ghost" onclick="addIRRow()" style="margin-bottom:14px;">+ Add parameter</button>
 
@@ -2739,18 +2740,47 @@ function renderInspectionReportNew(main){
   document.getElementById('irRows').innerHTML = '';
   if(editing && editing.rows.length){
     editing.rows.forEach(r=>addIRRow(r));
-  } else {
+  } else if(editing){
     addIRRow();
   }
   if(editing) document.getElementById('ir_material').value = editing.materialId;
   if(editing) document.getElementById('ir_partno').value = editing.partNo||'';
   if(linkedBatch) document.getElementById('ir_material').value = linkedBatch.materialId;
-  if(!editing) onInspReportMaterialChange();
+  if(!editing){
+    onInspReportMaterialChange();
+    if(!tryLoadInprocessTemplate(true)) addIRRow();
+  }
 }
 function onInspReportMaterialChange(){
   const m = materialById(val('ir_material'));
   const partNoField = document.getElementById('ir_partno');
   if(m && partNoField && !partNoField.value) partNoField.value = m.partNo || m.code;
+}
+function inprocessTemplateForMaterial(materialId){
+  return DB.inprocessTemplates.find(t=>t.materialId===materialId) || null;
+}
+function tryLoadInprocessTemplate(silent){
+  const materialId = val('ir_material');
+  const tpl = inprocessTemplateForMaterial(materialId);
+  if(!tpl) return false;
+  document.getElementById('irRows').innerHTML = '';
+  tpl.rows.forEach(r=>addIRRow({parameter:r.parameter, specification:r.specification, instrument:r.instrument}));
+  if(!silent) showToast(`Loaded saved template — ${tpl.rows.length} parameter(s) for ${materialById(materialId)?.name||'this material'}`);
+  return true;
+}
+function saveInprocessTemplate(){
+  const materialId = val('ir_material');
+  if(!materialId){ showToast('Select a material first'); return; }
+  const rows = [...document.querySelectorAll('#irRows .ir-row')].map(r=>({
+    parameter: r.querySelector('.ir-param').value.trim(),
+    specification: r.querySelector('.ir-spec').value.trim(),
+    instrument: r.querySelector('.ir-instrument').value.trim(),
+  })).filter(r=>r.parameter);
+  if(!rows.length){ showToast('Add at least one parameter first'); return; }
+  let tpl = DB.inprocessTemplates.find(t=>t.materialId===materialId);
+  if(tpl){ tpl.rows = rows; } else { DB.inprocessTemplates.push({id:'irt_'+Date.now(), materialId, rows}); }
+  saveDB();
+  showToast(`Template saved for ${materialById(materialId)?.name||'this material'} — future reports for it auto-fill these parameters`);
 }
 function addIRRow(prefill){
   const wrap = document.getElementById('irRows');
@@ -2802,8 +2832,67 @@ function submitInspectionReport(editId){
     navigate('inspection-report-register');
   }
 }
+/* Seed template data matching the real Retainer Seal inspection formats
+   shared by the factory - lets that first real use case work immediately
+   without anyone re-typing the whole structure by hand. */
+const RETAINER_SEAL_INPROCESS_TEMPLATE_ROWS = [
+  {parameter:'Height', specification:'20.066± 0.1', instrument:'VERNIER'},
+  {parameter:'Groove Width', specification:'7.13 -0.0/+0.12', instrument:'Slip Gauge'},
+  {parameter:'Angle', specification:'0° to 5°', instrument:'Bevel Protector'},
+  {parameter:'Groove ID', specification:'Ø 41.25 -0.0/+0.05', instrument:'Trimos+ Part Holding Fixture'},
+  {parameter:'Distance', specification:'6.35± 0.2', instrument:'Triomos+Slip Gauge'},
+  {parameter:'Dent,Damage Burr & Blow Hole', specification:'', instrument:'Visual'},
+];
+const RETAINER_SEAL_LAYOUT_TEMPLATE = {
+  identifier:'Finished Part', drawingNo:'3034830', revision:'01',
+  materialSpec:'50017 (Spectroscope)', inspStd:'16071, 16197, 16352',
+  items: [
+    {type:'view', label:'VIEW A'},
+    {type:'row', balloonNo:'A1', characteristic:'Depth', specification:'6.35±0.127', method:'Slip gauge+ Vernier'},
+    {type:'row', balloonNo:'A2', characteristic:'Surface Finish', specification:'Ra 125 micro inch Max', method:'Roughness Tester'},
+    {type:'row', balloonNo:'A3', characteristic:'Inner Diameter', specification:'33.274 -0.0/+0.254', method:'Vernier'},
+    {type:'row', balloonNo:'A4', characteristic:'Thickness', specification:'19.588-20.066', method:'Vernier'},
+    {type:'row', balloonNo:'A5', characteristic:'Flatness', specification:'0.127', method:'Dial Gauge'},
+    {type:'row', balloonNo:'A6', characteristic:'Surface Finish', specification:'Ra 63 micro inch Max', method:'Roughness Tester'},
+    {type:'row', balloonNo:'A7', characteristic:'Groove ID', specification:'41.249 -0.0/+0.050', method:'Trimos'},
+    {type:'row', balloonNo:'A8', characteristic:'Groove Width', specification:'7.13-0.0/+0.127', method:'Slip Gauge'},
+    {type:'view', label:'VIEW B'},
+    {type:'row', balloonNo:'B1', characteristic:'Radius', specification:'4x1.52±0.0.127', method:'Radius Gauge'},
+    {type:'row', balloonNo:'B2', characteristic:'Radius', specification:'11.76±0.127', method:'Radius Gauge'},
+    {type:'row', balloonNo:'B3', characteristic:'Radius', specification:'25.4±0.127', method:'Radius Gauge'},
+    {type:'row', balloonNo:'B4', characteristic:'Center Dist.', specification:'28.448±0.127', method:'Trimos'},
+    {type:'row', balloonNo:'B5', characteristic:'Center Dist.', specification:'57.15±0.127', method:'CMM'},
+    {type:'row', balloonNo:'B6', characteristic:'Radius', specification:'5.588±0.127', method:'Radius Gauge'},
+    {type:'view', label:'VIEW C'},
+    {type:'row', balloonNo:'C1', characteristic:'Radius', specification:'0.508 -0.0/+0.254', method:'Printed Mould'},
+    {type:'row', balloonNo:'C2', characteristic:'Angle', specification:'0° to 5°', method:'Profile Projector'},
+    {type:'row', balloonNo:'C3', characteristic:'Surface Finish', specification:'Ra 63 micro inch Max', method:'Roughness Tester'},
+    {type:'row', balloonNo:'C4', characteristic:'Break Corners', specification:'~38.1 R±0.127', method:'Profile Projector'},
+    {type:'row', balloonNo:'C5', characteristic:'Groove Width ref', specification:'7.13 -0.0/+0.127', method:'Slip Gauge'},
+    {type:'row', balloonNo:'C6', characteristic:'Surface Finish', specification:'Ra 63 micro inch Max', method:'Roughness Tester'},
+    {type:'row', balloonNo:'C7', characteristic:'Angle', specification:'0° to 5°', method:'Profile Projector'},
+  ]
+};
+function importRetainerSealTemplates(){
+  const m = ensureMaterialByName('Retainer Seal', 'PCS');
+  let addedCount = 0;
+  if(!inprocessTemplateForMaterial(m.id)){
+    DB.inprocessTemplates.push({id:'irt_'+Date.now(), materialId:m.id, rows: RETAINER_SEAL_INPROCESS_TEMPLATE_ROWS});
+    addedCount++;
+  }
+  if(!layoutTemplateForMaterial(m.id)){
+    DB.layoutTemplates.push({id:'lrt_'+Date.now(), materialId:m.id, ...RETAINER_SEAL_LAYOUT_TEMPLATE});
+    addedCount++;
+  }
+  saveDB();
+  showToast(addedCount ? `Retainer Seal templates ready (${m.code}) — pick it as Material on either report form` : 'Retainer Seal templates already exist');
+  render();
+}
 function renderInspectionReportRegister(main){
-  main.innerHTML = pageHead('First Piece & Inprocess Inspection Reports', 'Doc No: KKI/QAREC/31') +
+  const hasRSTemplates = DB.materials.some(m=>m.name.trim().toLowerCase()==='retainer seal') &&
+    inprocessTemplateForMaterial(DB.materials.find(m=>m.name.trim().toLowerCase()==='retainer seal').id);
+  main.innerHTML = pageHead('First Piece & Inprocess Inspection Reports', 'Doc No: KKI/QAREC/31',
+    hasRSTemplates ? '' : `<button class="btn ghost" onclick="importRetainerSealTemplates()">⇪ Set Up Retainer Seal Templates</button>`) +
     `<div class="panel"><div class="panel-body scroll-table" style="padding:0;"><table><thead><tr>
       <th>Report No.</th><th>Date</th><th>Material</th><th>Machine / Op No.</th><th>Operator</th><th>Result</th><th></th></tr></thead>
       <tbody>${DB.inspectionReports.length? DB.inspectionReports.slice().reverse().map(r=>{
@@ -2856,7 +2945,7 @@ function renderLayoutReportNew(main){
       ${linkedBatch ? `<div class="section-note" style="background:var(--warn-tint,#FDF3E3);border-color:var(--warn,#D9A441);">This report is for batch <b>${linkedBatch.identNo}</b>, currently sitting in Pending Inspections. Saving it marks the Layout Report as done for this batch — the actual Approve/Reject decision happens separately once every report you chose for this batch is complete.</div>` : ''}
       <div class="field"><label>Customer Name</label><input id="lr_customer" value="${editing?escapeHtml(editing.customerName||''):''}"></div>
       <div class="field-row">
-        <div class="field"><label>Material *</label><select id="lr_material" onchange="onLayoutReportMaterialChange()" ${linkedBatch?'disabled':''}>${optionsFor(DB.materials,'id',m=>materialLabel(m))}</select></div>
+        <div class="field"><label>Material *</label><select id="lr_material" onchange="onLayoutReportMaterialChange();tryLoadLayoutTemplate(false);" ${linkedBatch?'disabled':''}>${optionsFor(DB.materials,'id',m=>materialLabel(m))}</select></div>
         <div class="field"><label>Part No.</label><input id="lr_partno" placeholder="auto-fills from Material, editable"></div>
       </div>
       <div class="field"><label>Date</label><input id="lr_date" type="date" value="${editing?editing.date:todayISO()}"></div>
@@ -2870,7 +2959,8 @@ function renderLayoutReportNew(main){
       </div>
       <div class="field"><label>Inspection Std.</label><input id="lr_inspstd" placeholder="e.g. 16071, 16197, 16352" value="${editing?escapeHtml(editing.inspStd||''):''}"></div>
 
-      <div class="field"><label>Dimensional Checks</label></div>
+      <div class="field"><label>Dimensional Checks ${!editing?`<span class="link-btn" style="font-size:11px;margin-left:6px;" onclick="saveLayoutTemplate()">💾 Save as Template for this Material</span>`:''}</label></div>
+      <div class="muted" style="font-size:11px;margin:-4px 0 8px;">If this material already has a saved template, picking it above auto-fills all of this — just fill in the 10 sample observations and Remark per row.</div>
       <div id="lrRows" class="lr-rows"></div>
       <div style="margin-bottom:14px;">
         <button class="btn ghost" onclick="addLRView()">+ Add View Section</button>
@@ -2886,18 +2976,65 @@ function renderLayoutReportNew(main){
   document.getElementById('lrRows').innerHTML = '';
   if(editing && editing.items.length){
     editing.items.forEach(it=> it.type==='view' ? addLRView(it.label) : addLRRow(it));
-  } else {
+  } else if(editing){
     addLRView('VIEW A'); addLRRow();
   }
   if(editing) document.getElementById('lr_material').value = editing.materialId;
   if(editing) document.getElementById('lr_partno').value = editing.partNo||'';
   if(linkedBatch) document.getElementById('lr_material').value = linkedBatch.materialId;
-  if(!editing) onLayoutReportMaterialChange();
+  if(!editing){
+    onLayoutReportMaterialChange();
+    if(!tryLoadLayoutTemplate(true)){ addLRView('VIEW A'); addLRRow(); }
+  }
 }
 function onLayoutReportMaterialChange(){
   const m = materialById(val('lr_material'));
   const partNoField = document.getElementById('lr_partno');
   if(m && partNoField && !partNoField.value) partNoField.value = m.partNo || m.code;
+}
+function layoutTemplateForMaterial(materialId){
+  return DB.layoutTemplates.find(t=>t.materialId===materialId) || null;
+}
+function tryLoadLayoutTemplate(silent){
+  const materialId = val('lr_material');
+  const tpl = layoutTemplateForMaterial(materialId);
+  if(!tpl) return false;
+  document.getElementById('lr_identifier').value = tpl.identifier||'';
+  document.getElementById('lr_drawingno').value = tpl.drawingNo||'';
+  document.getElementById('lr_revision').value = tpl.revision||'';
+  document.getElementById('lr_matspec').value = tpl.materialSpec||'';
+  document.getElementById('lr_inspstd').value = tpl.inspStd||'';
+  document.getElementById('lrRows').innerHTML = '';
+  tpl.items.forEach(it=> it.type==='view' ? addLRView(it.label) : addLRRow({balloonNo:it.balloonNo, characteristic:it.characteristic, specification:it.specification, method:it.method}));
+  if(!silent){
+    const rowCount = tpl.items.filter(it=>it.type==='row').length;
+    showToast(`Loaded saved template — ${rowCount} dimension(s) for ${materialById(materialId)?.name||'this material'}`);
+  }
+  return true;
+}
+function saveLayoutTemplate(){
+  const materialId = val('lr_material');
+  if(!materialId){ showToast('Select a material first'); return; }
+  const items = [...document.querySelectorAll('#lrRows > div')].map(el=>{
+    if(el.classList.contains('lr-view-row')){
+      const label = el.querySelector('.lr-view-label').value.trim();
+      return label ? {type:'view', label} : null;
+    }
+    const mainRow = el.querySelector('.lr-row');
+    const balloonNo = mainRow.querySelector('.lr-balloon').value.trim();
+    const characteristic = mainRow.querySelector('.lr-char').value.trim();
+    if(!balloonNo && !characteristic) return null;
+    return { type:'row', balloonNo, characteristic,
+      specification: mainRow.querySelector('.lr-spec').value.trim(),
+      method: mainRow.querySelector('.lr-method').value.trim() };
+  }).filter(Boolean);
+  if(!items.some(it=>it.type==='row')){ showToast('Add at least one dimension row first'); return; }
+  const data = { identifier: val('lr_identifier'), drawingNo: val('lr_drawingno'), revision: val('lr_revision'),
+    materialSpec: val('lr_matspec'), inspStd: val('lr_inspstd'), items };
+  let tpl = DB.layoutTemplates.find(t=>t.materialId===materialId);
+  if(tpl){ Object.assign(tpl, data); } else { DB.layoutTemplates.push({id:'lrt_'+Date.now(), materialId, ...data}); }
+  saveDB();
+  showToast(`Template saved for ${materialById(materialId)?.name||'this material'} — future reports for it auto-fill this structure`);
 }
 function addLRView(label){
   const wrap = document.getElementById('lrRows');
